@@ -40,6 +40,11 @@ my $ok = sub {
 
 my $logger = FusionInventory::Agent::Logger::Test->new();
 
+unless (-e "resources/ssl/crt/ca.pem") {
+    print STDERR "Generating SSL certificates...\n";
+    qx(cd resources/ssl ; ./generate.sh );
+}
+
 my $proxy = FusionInventory::Test::Proxy->new();
 $proxy->background();
 
@@ -141,6 +146,12 @@ ok(
     'trusted certificate, wrong hostname: connection failure'
 );
 
+$server->stop();
+eval {
+    $server->background();
+};
+BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
+
 ok(
     $unsafe_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'trusted certificate, wrong hostname, no check: connection success'
@@ -169,6 +180,11 @@ ok(
 );
 
 SKIP: {
+$server->stop();
+eval {
+    $server->background();
+};
+BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 ok(
     $unsafe_client->request(HTTP::Request->new(GET => $url))->is_success(),
