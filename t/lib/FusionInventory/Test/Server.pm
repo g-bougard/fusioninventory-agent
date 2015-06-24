@@ -82,6 +82,16 @@ sub handle_request {
         $cgi->end_html();
     }
 
+    my $fh = $self->stdio_handle();
+    if ($fh && $fh->is_SSL()) {
+        $fh->stop_SSL();
+        # Reset old fh
+        if (exists($self->{_old_fh})) {
+            $self->stdio_handle($self->{_old_fh});
+            delete $self->{_old_fh};
+        }
+    }
+
     # fix for strange bug under Test::Harness
     # where HTTP::Server::Simple::CGI::Environment::header
     # keep appending value to this variable
@@ -106,21 +116,23 @@ sub print_banner {
 }
 
 sub accept_hook {
-   my $self = shift;
+    my $self = shift;
 
-   return unless $self->{ssl};
-   my $fh   = $self->stdio_handle;
+    return unless $self->{ssl};
+    my $fh   = $self->stdio_handle;
 
-   $self->SUPER::accept_hook(@_);
+    $self->SUPER::accept_hook(@_);
 
-   my $newfh = IO::Socket::SSL->start_SSL($fh,
+    $self->{_old_fh} = $fh;
+
+    my $newfh = IO::Socket::SSL->start_SSL($fh,
        SSL_server    => 1,
        SSL_use_cert  => 1,
        SSL_cert_file => $self->{crt},
        SSL_key_file  => $self->{key},
-   );
+    );
 
-   $self->stdio_handle($newfh) if $newfh;
+    $self->stdio_handle($newfh) if $newfh;
 }
 
 =head1 METHODS UNIQUE TO TestServer
