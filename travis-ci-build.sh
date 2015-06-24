@@ -2,6 +2,8 @@
 
 set -e
 
+perlbrew list
+
 git status
 
 perl Makefile.PL
