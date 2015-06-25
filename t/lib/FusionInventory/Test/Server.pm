@@ -84,7 +84,8 @@ sub handle_request {
 
     my $fh = $self->stdio_handle();
     if ($fh && $fh->isa("IO::Socket::SSL") && $fh->is_SSL()) {
-        $fh->stop_SSL();
+        die "Problem while stopping SSL: $!"
+            unless $fh->stop_SSL(SSL_fast_shutdown => 1);
         # Reset old fh
         if (exists($self->{_old_fh})) {
             $self->stdio_handle($self->{_old_fh});
