@@ -83,7 +83,7 @@ sub handle_request {
     }
 
     my $fh = $self->stdio_handle();
-    if ($fh && $fh->is_SSL()) {
+    if ($fh && $fh->isa("IO::Socket::SSL") && $fh->is_SSL()) {
         $fh->stop_SSL();
         # Reset old fh
         if (exists($self->{_old_fh})) {
