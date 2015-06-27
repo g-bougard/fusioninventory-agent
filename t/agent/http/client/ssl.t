@@ -147,6 +147,9 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
+
+# Reset previous errors to avoid false BAIL_OUT()
+undef $EVAL_ERROR;
 eval {
     $server->background();
 };
@@ -161,7 +164,6 @@ ok(
     !$secure_client->request(GetTestRequest())->is_success(),
     'trusted certificate, wrong hostname: connection failure'
 );
-
 $server->stop();
 
 # untrusted certificate, correct hostname
@@ -174,6 +176,9 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
+
+# Reset previous errors to avoid false BAIL_OUT()
+undef $EVAL_ERROR;
 eval {
     $server->background();
 };
