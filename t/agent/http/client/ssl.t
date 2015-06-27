@@ -153,19 +153,13 @@ eval {
 BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
 
 ok(
-    !$secure_client->request(GetTestRequest())->is_success(),
-    'trusted certificate, wrong hostname: connection failure'
-);
-
-$server->stop();
-eval {
-    $server->background();
-};
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
-
-ok(
     $unsafe_client->request(GetTestRequest())->is_success(),
     'trusted certificate, wrong hostname, no check: connection success'
+);
+
+ok(
+    !$secure_client->request(GetTestRequest())->is_success(),
+    'trusted certificate, wrong hostname: connection failure'
 );
 
 $server->stop();
@@ -185,22 +179,17 @@ eval {
 };
 BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
 
-ok(
-    !$secure_client->request(GetTestRequest())->is_success(),
-    'untrusted certificate, correct hostname: connection failure'
-);
-
 SKIP: {
-$server->stop();
-eval {
-    $server->background();
-};
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 ok(
     $unsafe_client->request(GetTestRequest())->is_success(),
     'untrusted certificate, correct hostname, no check: connection success'
 );
 }
+
+ok(
+    !$secure_client->request(GetTestRequest())->is_success(),
+    'untrusted certificate, correct hostname: connection failure'
+);
 
 $server->stop();
