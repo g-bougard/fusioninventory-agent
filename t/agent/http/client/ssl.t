@@ -39,7 +39,7 @@ if (!GetTestPort()) {
 } elsif ($OSNAME eq 'darwin') {
     plan skip_all => 'non working test on MacOS';
 } else {
-    plan tests => 11;
+    plan tests => 18;
 }
 
 my $ok = sub {
@@ -91,11 +91,16 @@ $server->set_dispatch({
     '/public'  => $ok,
 });
 
-ok($server->background(), "Good server can be launched in background");
+ok($server->background(), "Good server launched in background");
 
 ok(
     $secure_client->request(GetTestRequest())->is_success(),
     'trusted certificate, correct hostname: connection success'
+);
+
+is(
+    IO::Socket::SSL::errstr(), '',
+    'No SSL failure using trusted certificate toward good server'
 );
 
 SKIP: {
@@ -103,6 +108,14 @@ skip "Known to fail, see: http://forge.fusioninventory.org/issues/1940", 1 unles
 ok(
     $secure_proxy_client->request(GetTestRequest())->is_success(),
     'trusted certificate, correct hostname, through proxy: connection success'
+);
+}
+
+SKIP: {
+skip "Known to fail, see: http://forge.fusioninventory.org/issues/1940", 1 unless $ENV{TEST_AUTHOR};
+is(
+    IO::Socket::SSL::errstr(), '',
+    'No SSL failure using trusted certificate toward good server through proxy'
 );
 }
 
@@ -119,13 +132,21 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-ok($server->background(), "Server using alternate certs can be launched in background");
+ok($server->background(), "Server using alternate certs launched in background");
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 ok(
     $secure_client->request(GetTestRequest())->is_success(),
     'trusted certificate, alternate hostname: connection success'
+);
+}
+
+SKIP: {
+skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
+is(
+    IO::Socket::SSL::errstr(), '',
+    'No SSL failure using secure client toward alternate server'
 );
 }
 
@@ -141,17 +162,29 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-ok($server->background(), "Server using wrong certs can be launched in background");
+ok($server->background(), "Server using wrong certs launched in background");
 
 ok(
     $unsafe_client->request(GetTestRequest())->is_success(),
     'trusted certificate, wrong hostname, no check: connection success'
 );
 
+is(
+    IO::Socket::SSL::errstr(), '',
+    'No SSL failure using unsafe client toward wrong server'
+);
+
 ok(
     !$secure_client->request(GetTestRequest())->is_success(),
     'trusted certificate, wrong hostname: connection failure'
 );
+
+like(
+    IO::Socket::SSL::errstr(),
+    qr/hostname verification failed/,
+    'SSL failure using trusted certificate toward wrong server'
+);
+
 $server->stop();
 
 # untrusted certificate, correct hostname
@@ -164,7 +197,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-ok($server->background(), "Server using bad certs can be launched in background");
+ok($server->background(), "Server using bad certs launched in background");
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
@@ -174,9 +207,23 @@ ok(
 );
 }
 
+SKIP: {
+skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
+is(
+    IO::Socket::SSL::errstr(), '',
+    'No SSL failure using unsafe client toward bad server'
+);
+}
+
 ok(
     !$secure_client->request(GetTestRequest())->is_success(),
     'untrusted certificate, correct hostname: connection failure'
+);
+
+like(
+    IO::Socket::SSL::errstr(),
+    qr/hostname verification failed/,
+    'SSL failure using trusted certificate toward wrong server'
 );
 
 $server->stop();
