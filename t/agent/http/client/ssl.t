@@ -32,7 +32,7 @@ if (!$port) {
 } elsif ($LWP::VERSION < 6) {
     plan skip_all => "LWP version too old, skipping";
 } else {
-    plan tests => 18;
+    plan tests => 20;
 }
 
 my $ok = sub {
@@ -162,6 +162,11 @@ is(
     'No SSL failure using unsafe client toward wrong server'
 );
 
+like(
+    qx/netstat -tln|grep $port/, qr/LISTEN/,
+    'Wrong server is still listening'
+);
+
 ok(
     !$secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'trusted certificate, wrong hostname: connection failure'
@@ -195,6 +200,11 @@ ok(
 is(
     IO::Socket::SSL::errstr(), '',
     'No SSL failure using unsafe client toward bad server'
+);
+
+like(
+    qx/netstat -tln|grep $port/, qr/LISTEN/,
+    'Bad server is still listening'
 );
 
 ok(
