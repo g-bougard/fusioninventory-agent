@@ -15,6 +15,8 @@ use FusionInventory::Test::Proxy;
 use FusionInventory::Test::Server;
 use FusionInventory::Test::Utils;
 
+use Net::HTTPS;
+
 # Debug SSL negociation in case of failure
 $Net::SSLeay::trace = 1;
 
@@ -34,6 +36,10 @@ if (!$port) {
 } else {
     plan tests => 20;
 }
+
+diag("LWP $LWP::VERSION / IO::Socket::SSL $IO::Socket::SSL::VERSION / ",
+    "IO::Socket::INET $IO::Socket::INET::VERSION / ",
+    "Net::SSLeay $Net::SSLeay::VERSION / Net::HTTPS $Net::HTTPS::VERSION");
 
 my $ok = sub {
     my ($server, $cgi) = @_;
