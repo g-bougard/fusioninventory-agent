@@ -2,8 +2,8 @@
 
 set -e
 
-echo "Install nmap..."
-sudo apt-get install nmap
+echo "Installed packages:"
+dpkg -l
 
 echo "List of perl available versions:"
 perlbrew list

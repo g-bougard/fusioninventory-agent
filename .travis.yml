@@ -1,4 +1,6 @@
 language: perl
+before_install:
+  - sudo apt-get install -qq nmap
 script: ./travis-ci-build.sh
 perl:
   - "5.21"
