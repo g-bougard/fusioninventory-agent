@@ -2,10 +2,8 @@
 
 set -e
 
-echo "Install more perl lib..."
-cpanm --quiet --notest Net::NBName
-cpanm --quiet --notest Parse::EDID
-echo
+echo "Install nmap..."
+sudo apt-get install nmap
 
 echo "List of perl available versions:"
 perlbrew list
