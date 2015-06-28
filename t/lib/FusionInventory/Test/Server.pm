@@ -128,6 +128,33 @@ sub accept_hook {
     $self->stdio_handle($newfh) if $newfh;
 }
 
+# Fixed and very simplified run method refactored from HTTP::Server::Simple run & _default_run methods
+sub run {
+    my $self = shift;
+
+    local $SIG{CHLD} = 'IGNORE';    # reap child processes
+
+    $self->setup_listener;
+    $self->after_setup_listener();
+
+    local $SIG{PIPE} = 'IGNORE'; # If we don't ignore SIGPIPE, a
+                                 # client closing the connection before we
+                                 # finish sending will cause the server to exit
+
+    while ( accept( my $remote = new FileHandle, HTTP::Server::Simple::HTTPDaemon ) ) {
+        $self->stdio_handle($remote);
+
+        # This is the point, we must not continue processing the request if SSL failed !!!
+        if ($self->accept_hook || !$self->{ssl}) {
+            *STDIN  = $self->stdin_handle();
+            *STDOUT = $self->stdout_handle();
+            select STDOUT;
+            &{$self->_process_request};
+        }
+        close $self->stdio_handle;
+    }
+}
+
 =head1 METHODS UNIQUE TO TestServer
 
 =cut
