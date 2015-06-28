@@ -39,7 +39,7 @@ if (!GetTestPort()) {
 } elsif ($OSNAME eq 'darwin') {
     plan skip_all => 'non working test on MacOS';
 } else {
-    plan tests => 8;
+    plan tests => 11;
 }
 
 my $ok = sub {
@@ -91,11 +91,7 @@ $server->set_dispatch({
     '/public'  => $ok,
 });
 
-undef $EVAL_ERROR;
-eval {
-    $server->background();
-};
-ok(!$EVAL_ERROR, "Server can be launched in background");
+ok($server->background(), "Good server can be launched in background");
 
 ok(
     $secure_client->request(GetTestRequest())->is_success(),
@@ -123,7 +119,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-$server->background();
+ok($server->background(), "Server using alternate certs can be launched in background");
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
@@ -145,7 +141,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-$server->background();
+ok($server->background(), "Server using wrong certs can be launched in background");
 
 ok(
     $unsafe_client->request(GetTestRequest())->is_success(),
@@ -168,7 +164,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-$server->background();
+ok($server->background(), "Server using bad certs can be launched in background");
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
