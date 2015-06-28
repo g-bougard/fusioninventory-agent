@@ -39,7 +39,7 @@ if (!GetTestPort()) {
 } elsif ($OSNAME eq 'darwin') {
     plan skip_all => 'non working test on MacOS';
 } else {
-    plan tests => 7;
+    plan tests => 8;
 }
 
 my $ok = sub {
@@ -90,10 +90,12 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
+
+undef $EVAL_ERROR;
 eval {
     $server->background();
 };
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
+ok(!$EVAL_ERROR, "Server can be launched in background");
 
 ok(
     $secure_client->request(GetTestRequest())->is_success(),
@@ -121,11 +123,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-eval {
-    $server->background();
-};
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
-
+$server->background();
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
@@ -147,13 +145,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-
-# Reset previous errors to avoid false BAIL_OUT()
-undef $EVAL_ERROR;
-eval {
-    $server->background();
-};
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
+$server->background();
 
 ok(
     $unsafe_client->request(GetTestRequest())->is_success(),
@@ -176,13 +168,7 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-
-# Reset previous errors to avoid false BAIL_OUT()
-undef $EVAL_ERROR;
-eval {
-    $server->background();
-};
-BAIL_OUT("can't launch the server: $EVAL_ERROR") if $EVAL_ERROR;
+$server->background();
 
 SKIP: {
 skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
