@@ -16,7 +16,7 @@ use FusionInventory::Test::Server;
 use FusionInventory::Test::Utils;
 
 # Debug SSL negociation in case of failure
-#$Net::SSLeay::trace = 1;
+$Net::SSLeay::trace = 1;
 
 unsetProxyEnvVar();
 
