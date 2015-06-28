@@ -18,7 +18,7 @@ use FusionInventory::Test::Utils;
 use Net::HTTPS;
 
 # Debug SSL negociation in case of failure
-#$Net::SSLeay::trace = 1;
+$Net::SSLeay::trace = 1;
 
 unsetProxyEnvVar();
 
@@ -212,7 +212,9 @@ is(
     'No SSL failure using unsafe client toward bad server'
 );
 
+use Data::Dumper;
 $request = $secure_client->request(HTTP::Request->new(GET => $url));
+diag("\nFailure: ",Dumper($request));
 ok(
     !$request->is_success(),
     'untrusted certificate, correct hostname: connection failure'
