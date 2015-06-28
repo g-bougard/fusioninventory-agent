@@ -166,6 +166,10 @@ is(
     'No SSL failure using unsafe client toward wrong server'
 );
 
+# Actually, previous server may crash, so we should try restarting it before next test
+$server->stop();
+ok($server->background(), "Server using wrong certs launched in background");
+
 ok(
     !$secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'trusted certificate, wrong hostname: connection failure'
@@ -206,6 +210,10 @@ is(
     'No SSL failure using unsafe client toward bad server'
 );
 }
+
+# Actually, previous server may crash, so we should try restarting it before next test
+$server->stop();
+ok($server->background(), "Server using bad certs launched in background");
 
 ok(
     !$secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
