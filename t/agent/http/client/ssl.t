@@ -29,8 +29,10 @@ if (!$port) {
     plan skip_all => 'non working test on Windows';
 } elsif ($OSNAME eq 'darwin') {
     plan skip_all => 'non working test on MacOS';
+} elsif ($LWP::VERSION < 6) {
+    plan skip_all => "LWP version too old, skipping";
 } else {
-    plan tests => 18;
+    plan tests => 20;
 }
 
 my $ok = sub {
@@ -126,21 +128,15 @@ $server->set_dispatch({
 });
 ok($server->background(), "Server using alternate certs launched in background");
 
-SKIP: {
-skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 ok(
     $secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'trusted certificate, alternate hostname: connection success'
 );
-}
 
-SKIP: {
-skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 is(
     IO::Socket::SSL::errstr(), '',
     'No SSL failure using secure client toward alternate server'
 );
-}
 
 $server->stop();
 
@@ -195,21 +191,15 @@ $server->set_dispatch({
 });
 ok($server->background(), "Server using bad certs launched in background");
 
-SKIP: {
-skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 ok(
     $unsafe_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'untrusted certificate, correct hostname, no check: connection success'
 );
-}
 
-SKIP: {
-skip "LWP version too old, skipping", 1 unless $LWP::VERSION >= 6;
 is(
     IO::Socket::SSL::errstr(), '',
     'No SSL failure using unsafe client toward bad server'
 );
-}
 
 # Actually, previous server may crash, so we should try restarting it before next test
 $server->stop();
