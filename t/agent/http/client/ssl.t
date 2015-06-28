@@ -32,7 +32,7 @@ if (!$port) {
 } elsif ($LWP::VERSION < 6) {
     plan skip_all => "LWP version too old, skipping";
 } else {
-    plan tests => 20;
+    plan tests => 18;
 }
 
 my $ok = sub {
@@ -162,10 +162,6 @@ is(
     'No SSL failure using unsafe client toward wrong server'
 );
 
-# Actually, previous server may crash, so we should try restarting it before next test
-$server->stop();
-ok($server->background(), "Server using wrong certs launched in background");
-
 ok(
     !$secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'trusted certificate, wrong hostname: connection failure'
@@ -201,10 +197,6 @@ is(
     'No SSL failure using unsafe client toward bad server'
 );
 
-# Actually, previous server may crash, so we should try restarting it before next test
-$server->stop();
-ok($server->background(), "Server using bad certs launched in background");
-
 ok(
     !$secure_client->request(HTTP::Request->new(GET => $url))->is_success(),
     'untrusted certificate, correct hostname: connection failure'
@@ -213,7 +205,7 @@ ok(
 like(
     IO::Socket::SSL::errstr(),
     qr/hostname verification failed/,
-    'SSL failure using trusted certificate toward wrong server'
+    'SSL failure using trusted certificate toward bad server'
 );
 
 $server->stop();
