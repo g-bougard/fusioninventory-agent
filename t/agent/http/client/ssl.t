@@ -18,7 +18,7 @@ use FusionInventory::Test::Utils;
 use Net::HTTPS;
 
 # Can help to debug SSL negociation in case of failure
-#$Net::SSLeay::trace = 1;
+$Net::SSLeay::trace = 1;
 
 unsetProxyEnvVar();
 
