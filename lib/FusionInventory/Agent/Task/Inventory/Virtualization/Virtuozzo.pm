@@ -13,23 +13,6 @@ sub isEnabled {
     return canRun('vzlist');
 }
 
-sub getMACs {
-    my ($ctid, $logger) = @_;
-
-    my @ipLines = getAllLines(
-            command => "vzctl exec '$ctid' 'ip -0 a'",
-            logger  => $logger
-            );
-
-    my @macs;
-    foreach my $line (@ipLines) {
-        next unless $line =~ /^\s+link\/ether ($mac_address_pattern)\s/;
-        push @macs, $1;
-    }
-
-    return join('/', @macs);
-}
-
 sub doInventory {
     my (%params) = @_;
 
@@ -46,6 +29,8 @@ sub doInventory {
     # no service containers in glpi
     my $line = <$handle>;
 
+    my $hostID = $inventory->{h}{CONTENT}{HARDWARE}{UUID} || '';
+
     while (my $line = <$handle>) {
 
         chomp $line;
@@ -55,7 +40,7 @@ sub doInventory {
             file    => "/etc/vz/conf/$ctid.conf",
             pattern => qr/^SLMMEMORYLIMIT="\d+:(\d+)"$/,
             logger  => $logger,
-            );
+        );
         if ($memory) {
             $memory = $memory / 1024 / 1024;
         } else {
@@ -63,7 +48,7 @@ sub doInventory {
                 file    => "/etc/vz/conf/$ctid.conf",
                 pattern => qr/^PRIVVMPAGES="\d+:(\d+)"$/,
                 logger  => $logger,
-                );
+            );
             if ($memory) {
                 $memory = $memory * 4 / 1024;
             } else {
@@ -71,7 +56,7 @@ sub doInventory {
                     file    => "/etc/vz/conf/$ctid.conf",
                     pattern => qr/^PHYSPAGES="\d+:(\d+\w{0,1})"$/,
                     logger  => $logger,
-                    );
+                );
                 if ($memory) {
                     $memory =~ /:(\d+)(\w{0,1})/;
                     if ($2 eq "M") {
@@ -87,17 +72,21 @@ sub doInventory {
             }
         }
 
+        # compute specific identifier for the guest, as CTID is
+        # unique only for the local hosts
+        my $uuid = $hostID . '-' . $ctid;
+
         $inventory->addEntry(
             section => 'VIRTUALMACHINES',
             entry => {
                 NAME      => $name,
                 VCPU      => $cpus,
-                UUID      => $ctid,
+                UUID      => $uuid,
                 MEMORY    => $memory,
                 STATUS    => $status,
                 SUBSYSTEM => $subsys,
                 VMTYPE    => "Virtuozzo",
-                MAC       => getMACs($ctid, $logger)
+                MAC       => _getMACs($ctid, $logger)
             }
         );
 
@@ -105,5 +94,23 @@ sub doInventory {
 
     close $handle;
 }
+
+sub _getMACs {
+    my ($ctid, $logger) = @_;
+
+    my @ipLines = getAllLines(
+        command => "vzctl exec '$ctid' 'ip -0 a'",
+        logger  => $logger
+    );
+
+    my @macs;
+    foreach my $line (@ipLines) {
+        next unless $line =~ /^\s+link\/ether ($mac_address_pattern)\s/;
+        push @macs, $1;
+    }
+
+    return join('/', @macs);
+}
+
 
 1;

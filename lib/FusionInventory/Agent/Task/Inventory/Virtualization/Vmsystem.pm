@@ -76,17 +76,19 @@ sub doInventory {
         });
     }
 
-    my $vmid = $type eq 'Virtuozzo' ?
-        _getOpenVZVmID(logger => $logger) : undef;
-
-    my $uuid = $type eq 'Xen' ? _getXenUUID(logger => $logger) :
-               $type eq 'LXC' ? _getLibvirtLXC_UUID(logger => $logger) :
-               undef;
+    # compute a compound identifier, as Virtuozzo uses the same identifier
+    # for the host and for the guests
+    if ($type eq 'Virtuozzo') {
+        my $hostID  = $inventory->{h}{CONTENT}{HARDWARE}{UUID} || '';
+        my $guestID = getFirstMatch(
+            file => '/proc/self/status',
+            pattern => qr/^envID:\s*(\d+)/
+        ) || '';
+        $inventory->setHardware({ UUID => $hostID . '-' . $guestID });
+    }
 
     $inventory->setHardware({
         VMSYSTEM => $type,
-        UUID     => $uuid,
-        VMID     => $vmid
     });
 }
 
@@ -224,39 +226,6 @@ sub _matchPatterns {
         return 'VirtualBox'      if $line =~ $virtualbox_pattern;
         return 'Xen'             if $line =~ $xen_pattern;
     }
-}
-
-sub _getOpenVZVmID {
-    return getFirstMatch(
-        file    => '/proc/self/status',
-        pattern => qr/^envID:\s*(\d+)/,
-        @_
-    );
-}
-
-sub _getXenUUID {
-    return getFirstLine(
-        file => '/sys/hypervisor/uuid',
-        @_
-    );
-}
-
-sub _getLibvirtLXC_UUID {
-    my (%params) = (
-        file => '/proc/1/environ',
-        @_
-    );
-
-    my @environ = split( '\0', getAllLines( %params ) );
-
-    foreach my $variable (@environ) {
-        next unless $variable =~ /^LIBVIRT_LXC_UUID/;
-        my (undef, $value) = split('=', $variable);
-        return $value;
-    }
-
-    ## no critic (ExplicitReturnUndef)
-    return undef;
 }
 
 1;
