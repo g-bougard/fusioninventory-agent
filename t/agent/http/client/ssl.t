@@ -93,7 +93,6 @@ $server = FusionInventory::Test::Server->new(
 $server->set_dispatch({
     '/public'  => $ok,
 });
-
 ok($server->background(), "Good server launched in background");
 
 $request = $secure_client->request(HTTP::Request->new(GET => $url));
@@ -212,9 +211,7 @@ is(
     'No SSL failure using unsafe client toward bad server'
 );
 
-use Data::Dumper;
 $request = $secure_client->request(HTTP::Request->new(GET => $url));
-#diag("\nFailure: ",Dumper($request));
 ok(
     !$request->is_success(),
     'untrusted certificate, correct hostname: connection failure'

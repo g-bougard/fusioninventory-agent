@@ -132,13 +132,11 @@ sub accept_hook {
 
     $self->SUPER::accept_hook(@_);
 
-    $self->{_old_fh} = $fh;
-
     my $newfh = IO::Socket::SSL->start_SSL($fh,
-       SSL_server    => 1,
-       SSL_use_cert  => 1,
-       SSL_cert_file => $self->{crt},
-       SSL_key_file  => $self->{key},
+        SSL_server    => 1,
+        SSL_use_cert  => 1,
+        SSL_cert_file => $self->{crt},
+        SSL_key_file  => $self->{key},
     );
 
     $self->stdio_handle($newfh) if $newfh;
