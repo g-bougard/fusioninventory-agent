@@ -1,5 +1,11 @@
 language: perl
+# list available perl version
+before_install:
+  - perlbrew list
 perl:
+  - "5.22"
+  - "5.20-extras"
+  - "5.20"
   - "5.18"
   - "5.16"
   - "5.14"
