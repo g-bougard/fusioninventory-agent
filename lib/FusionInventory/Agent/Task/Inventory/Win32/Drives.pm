@@ -48,6 +48,8 @@ sub _getDrives {
     }
 
     my @drives;
+    my @volumes;
+    my %seen;
 
     foreach my $object (getWMIObjects(
         class      => 'Win32_LogicalDisk',
@@ -87,9 +89,59 @@ sub _getDrives {
             TYPE        => $type[$object->{DriveType}],
             VOLUMN      => $object->{VolumeName},
         };
+
+        $seen{$object->{DeviceID} || $object->{Caption}} = 1;
     }
 
-    return @drives;
+    # Scan Win32_Volume to check for mounted point drives
+    foreach my $object (getWMIObjects(
+        class      => 'Win32_Volume',
+        properties => [ qw/
+            InstallDate Description FreeSpace FileSystem Name Caption DriveLetter
+            SerialNumber Capacity DriveType Label
+        / ]
+    )) {
+        # Skip volume already seen as instance of Win32_LogicalDisk class
+        if (@drives && exists($object->{DriveLetter}) && $object->{DriveLetter}) {
+            next if $seen{$object->{DriveLetter}};
+        }
+
+        $object->{FreeSpace} = int($object->{FreeSpace} / (1024 * 1024))
+            if $object->{FreeSpace};
+
+        $object->{Capacity} = int($object->{Capacity} / (1024 * 1024))
+            if $object->{Capacity};
+
+        push @volumes, {
+            CREATEDATE  => $object->{InstallDate},
+            DESCRIPTION => $object->{Description},
+            FREE        => $object->{FreeSpace},
+            FILESYSTEM  => $object->{FileSystem},
+            LABEL       => $object->{Label},
+            LETTER      => $object->{Name} =~ m/^\\\\\?\\Volume/ ?
+                $object->{Label} : $object->{Name} || $object->{Caption},
+            SERIAL      => _encodeSerialNumber($object->{SerialNumber}),
+            SYSTEMDRIVE => $object->{DriveLetter} ?
+                (lc($object->{DriveLetter}) eq $systemDrive) : '',
+            TOTAL       => $object->{Capacity},
+            TYPE        => $type[$object->{DriveType}],
+            VOLUMN      => $object->{Label},
+        };
+    }
+
+    return @drives, @volumes;
+}
+
+sub _encodeSerialNumber {
+    my $serial = shift || '';
+
+    # Win32_Volume serial is a uint32 but returned as signed int32 by API
+    return $serial unless $serial =~ /^-?\d+$/;
+
+    # Re-encode serial as uint32 and return hexadecimal string
+    $serial = unpack('L', pack('L', $serial));
+
+    return sprintf("%08X", $serial);
 }
 
 1;
