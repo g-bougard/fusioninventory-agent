@@ -1008,6 +1008,7 @@ sub _setKnownMacAddresses {
         }
 
         # get additional associated mac addresses from those vlans
+        my @mac_addresses = ();
         foreach my $vlan (@vlans) {
             $logger->debug("switching SNMP context to vlan $vlan") if $logger;
             $snmp->switch_vlan_context($vlan);
@@ -1018,15 +1019,30 @@ sub _setKnownMacAddresses {
             );
             next unless $mac_addresses;
 
+            push @mac_addresses, $mac_addresses;
+        }
+        $snmp->reset_original_context() if @vlans;
+
+        # Try deprecated OIDs if no additional mac addresse was found on vlans
+        unless (@mac_addresses) {
+            my $addresses = _getKnownMacAddressesDeprecatedOids(
+                snmp              => $snmp,
+                address2mac       => '.1.3.6.1.2.1.4.22.1.2', # ipNetToMediaPhysAddress
+                address2interface => '.1.3.6.1.2.1.4.22.1.1' # ipNetToMediaIfIndex
+            );
+            push @mac_addresses, $addresses
+                if ($addresses);
+        }
+
+        # Finally add found mac addresse
+        foreach my $mac_addresses (@mac_addresses) {
             _addKnownMacAddresses(
                 ports     => $ports,
                 logger    => $logger,
                 addresses => $mac_addresses,
             );
         }
-        $snmp->reset_original_context() if @vlans;
     }
-
 }
 
 sub _addKnownMacAddresses {
@@ -1102,6 +1118,26 @@ sub _getKnownMacAddresses {
             sprintf "%02x:%02x:%02x:%02x:%02x:%02x", @bytes;
     }
 
+    return $results;
+}
+
+sub _getKnownMacAddressesDeprecatedOids {
+    my (%params) = @_;
+
+    my $snmp   = $params{snmp};
+                
+    my $results;
+    my $address2mac   = $snmp->walk($params{address2mac});
+    my $address2interface = $snmp->walk($params{address2interface});
+
+    foreach my $suffix (sort keys %{$address2mac}) {
+        my $interface_id = $address2interface->{$suffix};
+        next unless defined $interface_id;
+ 
+        push @{$results->{$interface_id}},
+            _getCanonicalMacAddress($address2mac->{$suffix});
+    }
+   
     return $results;
 }
 
