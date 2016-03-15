@@ -5,6 +5,8 @@ use warnings;
 use base 'Exporter';
 use utf8;
 
+use UNIVERSAL::require();
+
 use constant KEY_WOW64_64 => 0x100;
 use constant KEY_WOW64_32 => 0x200;
 
@@ -14,8 +16,6 @@ use English qw(-no_match_vars);
 use File::Temp qw(:seekable tempfile);
 use Win32::API;
 use Win32::Job;
-use Win32::OLE qw(in);
-use Win32::OLE::Const;
 use Win32::TieRegistry (
     Delimiter   => '/',
     ArrayValues => 0,
@@ -37,7 +37,7 @@ BEGIN {
     }
 }
 
-Win32::OLE->Option(CP => Win32::OLE::CP_UTF8);
+my $win32_OLE_loaded = 0;
 
 my $localCodepage;
 
@@ -92,8 +92,14 @@ sub getWMIObjects {
         @_
     );
 
+    # Load Win32::OLE as late as possible
+    Win32::OLE->require() or return;
+    $win32_OLE_loaded = 1;
+    Win32::OLE->use('in');
+    Win32::OLE->Option(CP => Win32::OLE::CP_UTF8());
+
     my $WMIService = Win32::OLE->GetObject($params{moniker})
-        or return; #die "WMI connection failed: " . Win32::OLE->LastError();
+        or return;
 
     my @objects;
     foreach my $instance (in(
@@ -142,7 +148,7 @@ sub getRegistryValue {
         keyName => $keyName
     );
 
-	return unless (defined($key));
+    return unless (defined($key));
 
     if ($valueName eq '*') {
         my %ret;
@@ -397,6 +403,13 @@ sub FileTimeToSystemTime {
     my @times = unpack( 'SSSSSSSS', $SystemTime );
 
     return @times;
+}
+
+END {
+    # Uninitializes Win32::OLE if loaded under multi-threading 
+    if ($win32_OLE_loaded) {
+        Win32::OLE->Uninitialize();
+    }
 }
 
 1;
