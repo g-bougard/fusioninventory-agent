@@ -146,7 +146,9 @@ SKIP: {
 
     # Calling findPeers API requires Win32::OLE to be loaded to find interfaces
     # Later forked scanners must not crash the service while terminating
-    $p2p->findPeers();
+    if ($OSNAME eq 'MSWin32') {
+        $p2p->findPeers();
+    }
 
     foreach my $test (keys(%find_tests)) {
         my @found = $p2p->_scanPeers(
