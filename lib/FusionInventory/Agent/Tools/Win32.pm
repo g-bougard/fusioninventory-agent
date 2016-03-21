@@ -406,7 +406,7 @@ sub FileTimeToSystemTime {
 }
 
 END {
-    # Uninitializes Win32::OLE if loaded under multi-threading 
+    # Uninitializes Win32::OLE if loaded under multi-threading
     if ($win32_OLE_loaded) {
         Win32::OLE->Uninitialize();
     }

@@ -48,8 +48,10 @@ sub findPeers {
 
     } elsif ($OSNAME eq 'MSWin32') {
         # Fork to avoid a crash with needed not thread-safe Win32::OLE API
-        my $pm = Parallel::ForkManager->new(1);
-        $pm->run_on_finish(
+        my $pfm = Parallel::ForkManager->new(1);
+
+        # Handle how we retrieve @interfaces from worker thread
+        $pfm->run_on_finish(
             sub {
                 my ($pid, $exit, $ident, $signal, $core_dump, $dataref) = @_;
                 if ($core_dump) {
@@ -59,12 +61,14 @@ sub findPeers {
                 @interfaces = ref($dataref) eq 'ARRAY' ? @{$dataref} : () ;
             }
         );
-        unless ($pm->start('getInterfaces')) {
+
+        # Start the thread doing the job with Win32::OLE
+        unless ($pfm->start('getInterfaces')) {
             FusionInventory::Agent::Tools::Win32->require();
             @interfaces = FusionInventory::Agent::Tools::Win32::getInterfaces();
-            $pm->finish(0,\@interfaces);
+            $pfm->finish(0, \@interfaces);
         }
-        $pm->wait_all_children;
+        $pfm->wait_all_children;
     }
 
     if (!@interfaces) {
