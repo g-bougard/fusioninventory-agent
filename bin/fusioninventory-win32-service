@@ -5,16 +5,15 @@ use warnings;
 use lib './lib';
 use threads;
 use threads::shared;
-use constant SERVICE_SLEEP_TIME => 2000; # 20 milliseconds
+use constant SERVICE_SLEEP_TIME => 20; # 20 milliseconds
 
+use UNIVERSAL::require;
 use File::Spec;
 use File::Basename;
 
 use English qw(-no_match_vars);
 use Win32;
 use Win32::Daemon;
-
-use FusionInventory::Agent;
 
 delete($ENV{PERL5LIB});
 delete($ENV{PERLLIB});
@@ -44,19 +43,12 @@ while (($state = Win32::Daemon::State()) != SERVICE_STOPPED) {
         killAgent();
         Win32::Daemon::State(SERVICE_PAUSED);
         $previousState = SERVICE_PAUSED;
-        killAgent();
         next;
     } elsif ($state == SERVICE_CONTINUE_PENDING) {
         # "Resuming...";
         startAgent();
         Win32::Daemon::State(SERVICE_RUNNING);
         $previousState = SERVICE_RUNNING;
-        next;
-    } elsif ($state == SERVICE_STOP_PENDING) {
-        # "Stopping...";
-        killAgent();
-        Win32::Daemon::State(SERVICE_STOPPED);
-        $previousState = SERVICE_STOPPED;
         next;
     } elsif ($state == SERVICE_RUNNING) {
         # The service is running as normal...
@@ -85,7 +77,7 @@ while (($state = Win32::Daemon::State()) != SERVICE_STOPPED) {
             Win32::Daemon::State(SERVICE_STOP_PENDING, 25000);
         }
     }
-    # Snoose for awhile so we don't suck up cpu time...
+    # Snooze for awhile so we don't suck up cpu time...
     Win32::Sleep(SERVICE_SLEEP_TIME);
 }
 
@@ -100,19 +92,28 @@ sub getMessage {
 sub startAgent {
     return if $thread;
     $thread = threads->create(sub {
+
+        threads->set_thread_exit_only(1);
+
+        FusionInventory::Agent->require();
+
         my $agent = FusionInventory::Agent->new(
             confdir => $directory . '/../../etc/fusioninventory',
             datadir => $directory . '/../../share',
             vardir  => $directory . '/../../var',
             libdir  => $directory . '/../../lib',
         );
+
+        # Handle KILL signal
+        $SIG{'KILL'} = sub { $agent->terminate(); threads->exit(); };
+
         $agent->init(options => { service => 1 });
         $agent->run();
     });
 }
 
 sub killAgent {
-    $thread->kill('KILL');
+    $thread->kill('KILL')->detach() if $thread;
     $thread = undef;
 }
 
