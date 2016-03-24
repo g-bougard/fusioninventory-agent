@@ -150,6 +150,8 @@ ok(
 my $name = $OSNAME eq 'MSWin32' ? 'PATHEXT' : 'PATH';
 my $value = $ENV{$name};
 
+print STDERR "\nExpected: <",$name, ">=<", $value, ">\n";
+
 ($out, $err, $rc) = run_executable(
     'fusioninventory-agent',
     "$base_options --local - --no-category printer,software"
@@ -169,6 +171,10 @@ ok(
     exists $content->{REQUEST}->{CONTENT}->{ENVS},
     'inventory has environment variables'
 );
+
+foreach (@{$content->{REQUEST}->{CONTENT}->{ENVS}}) {
+    print STDERR "\n<", $_->{KEY}, ">=<", $_->{VAL}, ">\n";
+}
 
 ok(
     (any
