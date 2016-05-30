@@ -27,7 +27,7 @@ plan tests => (2 * scalar keys %tests) + 1;
 
 my $inventory = FusionInventory::Test::Inventory->new();
 
-foreach my $test (sort keys %tests) {
+foreach my $test (keys %tests) {
     my $file = "resources/solaris/prtdiag/$test";
     my @memories =
       FusionInventory::Agent::Task::Inventory::Solaris::Memory::_getMemoriesPrtdiag(file => $file);

@@ -450,7 +450,7 @@ sub check_response_ok {
     plan tests => 1;
     my $response = $client->request(HTTP::Request->new(GET => $url));
 
-    ok($response->is_success(), "expected success response, but got ".$response->message);
+    ok($response->is_success(), "response is a success");
 }
 
 sub check_response_nok {

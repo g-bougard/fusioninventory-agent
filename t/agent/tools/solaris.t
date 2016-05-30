@@ -1347,19 +1347,19 @@ plan tests =>
     scalar (keys %prtdiag_tests) +
     scalar (keys %release_tests);
 
-foreach my $test (sort keys %prtconf_tests) {
+foreach my $test (keys %prtconf_tests) {
     my $file = "resources/solaris/prtconf/$test";
     my $info = getPrtconfInfos(file => $file);
     cmp_deeply($info, $prtconf_tests{$test}, "$test prtconf parsing");
 }
 
-foreach my $test (sort keys %prtdiag_tests) {
+foreach my $test (keys %prtdiag_tests) {
     my $file = "resources/solaris/prtdiag/$test";
     my $info = getPrtdiagInfos(file => $file);
     cmp_deeply($info, $prtdiag_tests{$test}, "$test prtdiag parsing");
 }
 
-foreach my $test (sort keys %release_tests) {
+foreach my $test (keys %release_tests) {
     my $file = "resources/solaris/release/$test";
     my $info = getReleaseInfo(file => $file);
     cmp_deeply($info, $release_tests{$test}, "$test /etc/release parsing");
