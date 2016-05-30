@@ -47,7 +47,7 @@ sub new {
         libdir  => $params{libdir},
         vardir  => $params{vardir},
         sigterm => $params{sigterm},
-        tasks   => [],
+        tasks   => []
     };
     bless $self, $class;
 
