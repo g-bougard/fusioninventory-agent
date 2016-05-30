@@ -47,6 +47,7 @@ sub new {
         libdir  => $params{libdir},
         vardir  => $params{vardir},
         sigterm => $params{sigterm},
+        targets => [],
         tasks   => []
     };
     bless $self, $class;
@@ -93,7 +94,7 @@ sub init {
 
     $self->_createTargets();
 
-    if (!$self->{targets}) {
+    if (!$self->getTargets()) {
         $logger->error("No target defined, aborting");
         exit 1;
     }
@@ -178,7 +179,7 @@ sub reinit {
 
     $self->_saveState();
 
-    if (!$self->{targets}) {
+    if (!$self->getTargets()) {
         $logger->error("No target defined, aborting");
         exit 1;
     }
@@ -215,17 +216,18 @@ sub run {
 
     $self->{status} = 'waiting';
 
+    my @targets = $self->getTargets();
+
     if ($self->{config}->{daemon} || $self->{config}->{service}) {
 
         $self->{logger}->debug2("Running in background mode");
 
         # background mode: work on a targets list copy, but loop while
         # the list really exists so we can stop quickly when asked for
-        my @targets = @{$self->{targets}};
-        while (@{$self->{targets}}) {
+        while ($self->getTargets()) {
             my $time = time();
 
-            @targets = @{$self->{targets}} unless @targets;
+            @targets = $self->getTargets() unless @targets;
             my $target = shift @targets;
 
             $self->_reloadConfIfNeeded();
@@ -239,7 +241,7 @@ sub run {
                 $target->resetNextRunDate();
 
                 # Leave immediately if we passed in terminate method
-                last unless @{$self->{targets}};
+                last unless $self->getTargets();
             }
 
             if ($self->{server}) {
@@ -255,8 +257,8 @@ sub run {
 
         # foreground mode: check each targets once
         my $time = time();
-        while (@{$self->{targets}}) {
-            my $target = shift @{$self->{targets}};
+        while ($self->getTargets() && @targets) {
+            my $target = shift @targets;
             if ($self->{config}->{lazy} && $time < $target->getNextRunDate()) {
                 $self->{logger}->info(
                     "$target->{id} is not ready yet, next server contact " .
@@ -290,7 +292,7 @@ sub terminate {
     $self->{current_task}->abort() if $self->{current_task};
 
     # Handle killed callback
-    &$self->{sigterm} if $self->{sigterm};
+    &{$self->{sigterm}}() if $self->{sigterm};
 }
 
 sub _runTarget {
@@ -338,7 +340,7 @@ sub _runTarget {
         $self->{status} = 'waiting';
 
         # Leave earlier while requested
-        last unless @{$self->{targets}};
+        last unless $self->getTargets();
     }
 }
 
@@ -360,7 +362,7 @@ sub _runTask {
                 }
 
                 # Leave earlier while requested
-                last unless @{$self->{targets}};
+                last unless $self->getTargets();
             }
             delete $self->{current_runtask};
         } else {
