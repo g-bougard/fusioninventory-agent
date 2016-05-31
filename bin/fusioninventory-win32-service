@@ -22,6 +22,8 @@ use Pod::Usage;
 use Win32;
 use Win32::Daemon;
 
+use FusionInventory::Agent;
+
 delete($ENV{PERL5LIB});
 delete($ENV{PERLLIB});
 
