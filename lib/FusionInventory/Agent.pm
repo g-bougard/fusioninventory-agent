@@ -246,7 +246,7 @@ sub run {
 
             if ($self->{server}) {
                 # check for http interface messages, default timeout is 1 second
-                $self->{server}->handleRequests() ;
+                $self->{server}->handleRequests() or delay(1);
             } else {
                 delay(1);
             }
@@ -356,7 +356,7 @@ sub _runTask {
             $self->{current_runtask} = $pid;
             while (waitpid($pid, WNOHANG) == 0) {
                 if ($self->{server}) {
-                    $self->{server}->handleRequests() ;
+                    $self->{server}->handleRequests() or delay(1);
                 } else {
                     delay(1);
                 }
