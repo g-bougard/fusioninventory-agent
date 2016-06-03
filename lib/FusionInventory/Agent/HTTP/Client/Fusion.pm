@@ -4,7 +4,7 @@ use strict;
 use warnings;
 use base 'FusionInventory::Agent::HTTP::Client';
 
-use JSON;
+use JSON::PP;
 use HTTP::Request;
 use HTTP::Headers;
 use HTTP::Cookies;
@@ -101,7 +101,10 @@ sub send { ## no critic (ProhibitBuiltinHomonyms)
 
     $self->{_cookies}->extract_cookies($response);
 
-    return eval { from_json( $response->content(), { utf8  => 1 } ) };
+    my $decoder = JSON::PP->new
+        or die "Can't use JSON::PP decoder: $!";
+
+    return $decoder->decode( $response->content() );
 }
 
 1;
