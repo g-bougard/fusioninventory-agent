@@ -5,14 +5,15 @@ before_install:
   - perlbrew list
   - perl -V
 perl:
-  - "5.22-thr"
-  - "5.20-thr"
-  - "5.18-thr"
-  - "5.16-thr"
-  - "5.14-thr"
-  - "5.12-thr"
-  - "5.10-thr"
-  - "5.8-thr"
+  - "5.25.1-thr"
+  - "5.22.0-thr"
+  - "5.20.1-thr"
+  - "5.18.3-thr"
+  - "5.16.3-thr"
+  - "5.14.4-thr"
+  - "5.12.5-thr"
+  - "5.10.1-thr"
+  - "5.8.9-thr"
 notifications:
   email: false
 # whitelist
