@@ -1,5 +1,9 @@
 sudo: false
 language: perl
+# list available perl version
+before_install:
+  - perlbrew list
+  - perl -V
 perl:
   - "5.22"
   - "5.20"
