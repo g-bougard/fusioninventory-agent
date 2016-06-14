@@ -6,7 +6,6 @@ use warnings;
 use Compress::Zlib;
 use English qw(-no_match_vars);
 use File::Path qw(mkpath);
-use Parallel::ForkManager;
 use UNIVERSAL::require;
 use FusionInventory::Agent::Tools;
 use Encode;
@@ -44,34 +43,10 @@ sub prepare {
     foreach my $file (@{$self->{files}}) {
         $file->{name_local} = $file->{name};
 
-        if ($OSNAME eq 'MSWin32' && Encode::is_utf8($file->{name})) {
-            my $localCodepage;
-
-            # Fork to avoid a crash with needed not thread-safe Win32::OLE API
-            my $pfm = Parallel::ForkManager->new(1);
-
-            # Handle how we retrieve value from worker thread
-            $pfm->run_on_finish(
-                sub {
-                    my ($pid, $exit, $ident, $signal, $core_dump, $dataref) = @_;
-                    if ($core_dump) {
-                        $self->{logger}->error("Failed to search local codepage");
-                        $self->{logger}->debug("Received $exit exit code and $signal signal");
-                    }
-                    $localCodepage = ref($dataref) eq 'SCALAR' ? ${$dataref} : 0 ;
-                }
-            );
-
-            # Start the thread doing the job with Win32::OLE
-            unless ($pfm->start('getLocalCodepage')) {
-                FusionInventory::Agent::Tools::Win32->require;
-                $localCodepage = FusionInventory::Agent::Tools::Win32::getLocalCodepage();
-                $pfm->finish(0, \$localCodepage);
-            }
-            $pfm->wait_all_children;
-
-            # Re-encode filename in found local codepage
-            if (defined($localCodepage) && $localCodepage) {
+        if ($OSNAME eq 'MSWin32') {
+            FusionInventory::Agent::Tools::Win32->require;
+            my $localCodepage = FusionInventory::Agent::Tools::Win32::getLocalCodepage();
+            if (Encode::is_utf8($file->{name})) {
                 $file->{name_local} = encode($localCodepage, $file->{name});
             }
         }
