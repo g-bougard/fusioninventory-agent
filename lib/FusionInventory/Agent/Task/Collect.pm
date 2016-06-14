@@ -9,7 +9,6 @@ use English qw(-no_match_vars);
 use File::Basename;
 use File::Find;
 use File::stat;
-use Parallel::ForkManager;
 
 use FusionInventory::Agent;
 use FusionInventory::Agent::Logger;
@@ -443,36 +442,17 @@ sub _runCommand {
 sub _getFromWMI {
     my %params = @_;
 
+    return unless FusionInventory::Agent::Tools::Win32->require();
+
     return unless $params{properties};
     return unless $params{class};
 
     my @results;
 
-    # We will fork to avoid a crash with needed not thread-safe Win32::OLE API
-    my $pfm = Parallel::ForkManager->new(1);
-
-    # Handle how we retrieve @results from worker thread
-    $pfm->run_on_finish(
-        sub {
-            my ($pid, $exit, $ident, $signal, $core_dump, $dataref) = @_;
-            @results = ref($dataref) eq 'ARRAY' ? ${$dataref} : () ;
-        }
-    );
-
-    # Start the thread doing the job with Win32::OLE
-    unless ($pfm->start('getWMIObjects')) {
-        FusionInventory::Agent::Tools::Win32->require();
-        if ($EVAL_ERROR) {
-            $pfm->finish(1);
-        }
-
-        my @objects = FusionInventory::Agent::Tools::Win32::getWMIObjects(%params);
-        foreach my $object (@objects) {
-            push @results, $object;
-        }
-        $pfm->finish(0, \@results);
-     }
-    $pfm->wait_all_children;
+    my @objects = FusionInventory::Agent::Tools::Win32::getWMIObjects(%params);
+    foreach my $object (@objects) {
+        push @results, $object;
+    }
 
     return @results;
 }
