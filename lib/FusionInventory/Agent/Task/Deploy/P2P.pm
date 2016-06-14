@@ -47,28 +47,8 @@ sub findPeers {
         @interfaces = FusionInventory::Agent::Tools::Linux::getInterfacesFromIfconfig();
 
     } elsif ($OSNAME eq 'MSWin32') {
-        # Fork to avoid a crash with needed not thread-safe Win32::OLE API
-        my $pfm = Parallel::ForkManager->new(1);
-
-        # Handle how we retrieve @interfaces from worker thread
-        $pfm->run_on_finish(
-            sub {
-                my ($pid, $exit, $ident, $signal, $core_dump, $dataref) = @_;
-                if ($core_dump) {
-                    $self->{logger}->error("Failed to search interfaces");
-                    $self->{logger}->debug("Received $exit exit code and $signal signal");
-                }
-                @interfaces = ref($dataref) eq 'ARRAY' ? @{$dataref} : () ;
-            }
-        );
-
-        # Start the thread doing the job with Win32::OLE
-        unless ($pfm->start('getInterfaces')) {
-            FusionInventory::Agent::Tools::Win32->require();
-            @interfaces = FusionInventory::Agent::Tools::Win32::getInterfaces();
-            $pfm->finish(0, \@interfaces);
-        }
-        $pfm->wait_all_children;
+        FusionInventory::Agent::Tools::Win32->require();
+        @interfaces = FusionInventory::Agent::Tools::Win32::getInterfaces();
     }
 
     if (!@interfaces) {
