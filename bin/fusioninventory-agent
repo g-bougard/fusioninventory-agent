@@ -60,6 +60,8 @@ GetOptions(
     'wait|w=s',
     # deprecated options
     'stdout',
+    # Platform specific option
+    'no-win32-ole-workaround'
 ) or pod2usage(-verbose => 0);
 
 pod2usage(-verbose => 0, -exitstatus => 0) if $options->{help};
@@ -93,6 +95,12 @@ if ($options->{'conf-file'}) {
     } else {
         $options->{config} = 'file';
     }
+}
+
+if ($OSNAME eq 'MSWin32' && ! $options->{'no-win32-ole-workaround'}) {
+    # From here we may need to avoid crashes due to not thread-safe Win32::OLE
+    FusionInventory::Agent::Tools::Win32->require();
+    FusionInventory::Agent::Tools::Win32::start_Win32_OLE_Worker();
 }
 
 my $agent = FusionInventory::Agent->new(%setup);
@@ -156,7 +164,8 @@ B<fusioninventory-agent> [options] [--server server|--local path]
 
   Task selection options:
     --list-tasks                   list available tasks and exit
-    --no-task=TASK                 do not run given task
+    --no-task=TASK[,TASK]...       do not run given task
+    --tasks=TASK1[,TASK]...[,...]  run given tasks in given order
 
   Inventory task specific options:
     --no-category=CATEGORY         do not list given category items
@@ -197,8 +206,10 @@ B<fusioninventory-agent> [options] [--server server|--local path]
     --color                        use color in the console (false)
 
   Configuration options:
-    --config=BACKEND               configuration backend
-    --conf-file=FILE               configuration file
+    --config=BACKEND                   configuration backend
+    --conf-file=FILE                   configuration file
+    --conf-reload-interval=<SECONDS>   number of seconds between two
+                                         configuration reloadings
 
   Execution mode options:
     -w --wait=LIMIT                maximum delay before execution,
@@ -210,6 +221,10 @@ B<fusioninventory-agent> [options] [--server server|--local path]
     --setup                        print the agent setup directories
                                      and exit
     --version                      print the version and exit
+    --no-win32-ole-workaround      [win32 only] disable win32 work-around
+                                     used to better handle Win32::OLE apis.
+                                     !!! Use it at your own risk as you may
+                                     experiment perl crash under win32 !!!
 
 =head1 DESCRIPTION
 
@@ -309,6 +324,27 @@ Do not run given task.
 
 Multiple values can be specified, using comma as a separator. See option
 I<--list-tasks> for the list of available tasks.
+
+=back
+
+=item B<--tasks>=I<TASK>
+
+Run given tasks in given order.
+
+Multiple tasks can be specified, using comma as a separator.
+A task can be specified several times. if '...' is given as last element,
+all other available tasks are executed.
+
+See option I<--list-tasks> for the list of available tasks.
+
+Examples :
+* --tasks=inventory,deploy,inventory
+  First task executed is 'inventory', second task is 'deploy', third and last
+  task is 'inventory'.
+
+* --tasks=inventory,deploy,...
+  First executed task is 'inventory', second task is 'deploy' and then all
+  other available tasks are executed.
 
 =back
 
@@ -561,6 +597,13 @@ none: don't read any configuration.
 =item B<--conf-file>=I<FILE>
 
 Use I<FILE> as configuration file (implies file configuration backend).
+
+=back
+
+=item B<--conf-reload-interval>=I<SECONDS>
+
+SECONDS is the number of seconds between two configuration reloadings.
+Default value is 0, which means that configuration is never reloaded.
 
 =back
 
