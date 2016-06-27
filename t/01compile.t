@@ -30,11 +30,24 @@ sub filter {
     if (!$Config{usethreads} || $Config{usethreads} ne 'define') {
         return 0 if $_ =~ m{FusionInventory/Agent/Task/NetInventory.pm};
         return 0 if $_ =~ m{FusionInventory/Agent/Task/NetDiscovery.pm};
-        return 0 if $_ =~ m{FusionInventory/Agent/Threads.pm};
+        return 0 if $_ =~ m{FusionInventory/Agent/Tools/Win32.pm};
+        return 0 if $_ =~ m{FusionInventory/Agent/Task/Inventory/Win32};
     }
+
+    return 0 if ($_ =~ m{FusionInventory/Agent/Task/Deploy.pm} &&
+        !(File::Copy::Recursive->require()));
 
     return 0 if ($_ =~ m{FusionInventory/Agent/Task/Deploy/P2P.pm} &&
         !(Net::Ping->require() && Parallel::ForkManager->require()));
+
+    return 0 if ($_ =~ m{FusionInventory/Agent/Task/Deploy/ActionProcessor.pm} &&
+        !(File::Copy::Recursive->require()));
+
+    return 0 if ($_ =~ m{FusionInventory/Agent/Task/Deploy/ActionProcessor/Action/Move.pm} &&
+        !(File::Copy::Recursive->require()));
+
+    return 0 if ($_ =~ m{FusionInventory/Agent/Task/Deploy/ActionProcessor/Action/Copy.pm} &&
+        !(File::Copy::Recursive->require()));
 
     return 1;
 }

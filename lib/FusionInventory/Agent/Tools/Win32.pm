@@ -17,7 +17,6 @@ use constant KEY_WOW64_32 => 0x200;
 use Cwd;
 use Encode;
 use English qw(-no_match_vars);
-use Memoize;
 use File::Temp qw(:seekable tempfile);
 use Win32::Job;
 use Win32::TieRegistry (
@@ -29,7 +28,7 @@ use Win32::TieRegistry (
 use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Tools::Network;
 
-memoize('getLocalCodepage');
+my $localCodepage;
 
 our @EXPORT = qw(
     is64bit
@@ -46,16 +45,6 @@ our @EXPORT = qw(
 );
 
 sub is64bit {
-    my $win32_ole_dependent_api = {
-        use   => [qw(any)],
-        funct => '_is64bit',
-        args  => \@_
-    };
-
-    return _call_win32_ole_dependent_api($win32_ole_dependent_api);
-}
-
-sub _is64bit {
     return
         any { $_->{AddressWidth} eq 64 }
         getWMIObjects(
@@ -64,10 +53,15 @@ sub _is64bit {
 }
 
 sub getLocalCodepage {
-    return "cp" .
+    if (!$localCodepage) {
+        $localCodepage =
+            "cp" .
             getRegistryValue(
                 path => 'HKEY_LOCAL_MACHINE/SYSTEM/CurrentControlSet/Control/Nls/CodePage/ACP'
             );
+    }
+
+    return $localCodepage;
 }
 
 sub encodeFromRegistry {
@@ -83,7 +77,6 @@ sub encodeFromRegistry {
 
 sub getWMIObjects {
     my $win32_ole_dependent_api = {
-        use   => [qw(in GetObject)],
         array => 1,
         funct => '_getWMIObjects',
         args  => \@_
@@ -100,6 +93,8 @@ sub _getWMIObjects {
 
     my $WMIService = Win32::OLE->GetObject($params{moniker})
         or return;
+
+    Win32::OLE->use('in');
 
     my @objects;
     foreach my $instance (in(
@@ -447,11 +442,6 @@ sub _win32_ole_worker {
         if (defined($call)) {
             lock($call);
 
-            # Use all requested API
-            while (my $api = shift @{$call->{'use'}}) {
-                Win32::OLE->use($api);
-            }
-
             # Found requested private function and call it as expected
             my $funct;
             eval {
@@ -517,10 +507,11 @@ sub _call_win32_ole_dependent_api {
         return (exists($call->{'array'}) && $call->{'array'}) ?
             @{$result || []} : $result ;
     } else {
+        # Load Win32::OLE as late as possible
+        Win32::OLE->require() or return;
+        Win32::OLE->Option(CP => Win32::OLE::CP_UTF8());
+
         # We come here from worker or if we failed to start worker
-        foreach my $api (@{$call->{'use'}}) {
-            Win32::OLE->use($api);
-        }
         my $funct;
         eval {
             no strict 'refs'; ## no critic (ProhibitNoStrict)

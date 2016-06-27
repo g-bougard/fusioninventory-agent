@@ -97,7 +97,7 @@ if ($options->{'conf-file'}) {
     }
 }
 
-if ($OSNAME eq 'MSWin32' && ! $options->{'no_worker_thread'}) {
+if ($OSNAME eq 'MSWin32' && ! $options->{'no-win32-ole-workaround'}) {
     # From here we may need to avoid crashes due to not thread-safe Win32::OLE
     FusionInventory::Agent::Tools::Win32->require();
     FusionInventory::Agent::Tools::Win32::start_Win32_OLE_Worker();
@@ -324,8 +324,6 @@ Do not run given task.
 
 Multiple values can be specified, using comma as a separator. See option
 I<--list-tasks> for the list of available tasks.
-
-=back
 
 =item B<--tasks>=I<TASK>
 
@@ -598,12 +596,12 @@ none: don't read any configuration.
 
 Use I<FILE> as configuration file (implies file configuration backend).
 
-=back
-
 =item B<--conf-reload-interval>=I<SECONDS>
 
 SECONDS is the number of seconds between two configuration reloadings.
 Default value is 0, which means that configuration is never reloaded.
+Minimum value is 60. If given value is less than this minimum, it is set to
+this minimum. If given value is less than 0, it is set to 0.
 
 =back
 
