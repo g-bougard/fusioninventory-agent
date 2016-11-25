@@ -18,6 +18,9 @@ requires 'Net::IP'            => '0';
 requires 'Text::Template'     => '0';
 requires 'UNIVERSAL::require' => '0';
 requires 'XML::TreePP'        => '0.26';
+if ($OSNAME =~ /darwin/i) {
+    requires 'Tie::IxHash'        => '0';
+}
 
 if ($OSNAME eq 'MSWin32') {
     requires 'Win32::OLE'         => '0';
@@ -31,10 +34,10 @@ recommends 'IO::Socket::SSL'      => '1.14';
 recommends 'LWP::Protocol::https' => '0';
 
 if ($OSNAME ne 'MSWin32') {
-    recommends 'Proc::Daemon'     => '0';
-    recommends 'Proc::PID::File'  => '0';
+    recommends 'Proc::Daemon'         => '0';
+    recommends 'Proc::PID::File'      => '0';
 } else {
-    recommends 'Win32::Daemon'    => '0';
+    recommends 'Win32::Daemon'        => '0';
     recommends 'Win32::Unicode::File' => '0';
 }
 
@@ -58,8 +61,9 @@ test_requires 'Net::SNMP'                    => '0';
 test_requires 'Parallel::ForkManager'        => '0';
 
 # Inventory
-recommends 'Parse::EDID' => '0';
-recommends 'Net::CUPS'   => 0.60 if $OSNAME ne 'MSWin32';
+recommends 'Parse::EDID'                     => '0';
+recommends 'Net::CUPS'                       => 0.60 if $OSNAME ne 'MSWin32';
+recommends 'DateTime'                        => '0';
 
 # Deploy
 recommends 'Archive::Extract'             => '0';
@@ -89,7 +93,7 @@ install_script 'bin/fusioninventory-esx';
 
 resources
     homepage    => "http://www.fusioninventory.org",
-    bugtracker  => "http://forge.fusioninventory.org/projects/fusioninventory-agent/issues",
+    bugtracker  => "https://github.com/fusioninventory/fusioninventory-agent/issues",
     repository  => "https://github.com/fusioninventory/fusioninventory-agent/",
     IRC         => "irc://irc.freenode.net/#fusioninventory";
 

@@ -20,7 +20,7 @@ sub doInventory {
 
     my $inventory = $params{inventory};
 
-    my $softwares = _getSoftwaresList(logger => $params{logger});
+    my $softwares = _getSoftwaresList(logger => $params{logger}, format => 'xml');
     return unless $softwares;
 
     foreach my $software (@$softwares) {
@@ -35,14 +35,24 @@ sub _getSoftwaresList {
     my (%params) = @_;
     my $logger = $params{logger};
 
-    my $infos = getSystemProfilerInfos(
-        type => 'SPApplicationsDataType',
+    my $infos;
+    my $datesAlreadyFormatted = 1;
+    # when format used is 'text', dates are not formatted
+    # they have to be formatted so we use this variable to format dates if needed
+    if (!$params{format} || $params{format} eq 'text') {
+        $datesAlreadyFormatted = 0;
+    }
+    my $localTimeOffset = FusionInventory::Agent::Tools::MacOS::detectLocalTimeOffset();
+    $infos = FusionInventory::Agent::Tools::MacOS::getSystemProfilerInfos(
+        type            => 'SPApplicationsDataType',
+        localTimeOffset => $localTimeOffset,
         @_
     );
+
     my $info = $infos->{Applications};
 
     my @softwares;
-    foreach my $name (keys %$info) {
+    for my $name (keys %$info) {
         my $app = $info->{$name};
 
         # Windows application found by Parallels (issue #716)
@@ -50,13 +60,18 @@ sub _getSoftwaresList {
             $app->{'Get Info String'} &&
             $app->{'Get Info String'} =~ /^\S+, [A-Z]:\\/;
 
+        my $formattedDate = $app->{'Last Modified'};
+        if (!$datesAlreadyFormatted) {
+            $formattedDate = _formatDate($formattedDate, $logger)
+        }
+
         push @softwares, {
             NAME      => $name,
             VERSION   => $app->{'Version'},
             COMMENTS  => $app->{'Kind'} ? '[' . $app->{'Kind'} . ']' : undef,
             PUBLISHER => $app->{'Get Info String'},
             # extract date's data and format these data
-            INSTALLDATE => _formatDate($app->{'Last Modified'}, $logger)
+            INSTALLDATE => $formattedDate
         };
     }
 
@@ -72,7 +87,7 @@ sub _formatDate {
     my $extractionPattern = "%m/%d/%y %H:%M";
     my $extractionPatternUsed = '';
 
-    my $outputFormat = "%Y-%m-%d %H:%M";
+    my $outputFormat = "%d/%m/%Y";
 
     # trim
     $dateStr =~ s/^\s+|\s+$//g;

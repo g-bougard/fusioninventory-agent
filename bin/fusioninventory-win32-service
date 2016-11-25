@@ -57,7 +57,7 @@ if ($options->{register}) {
         name    => $options->{name}        || SERVICE_NAME,
         display => $options->{displayname} || SERVICE_DISPLAYNAME,
         path    => "$^X",
-        parameters => "-I$libdir ".File::Spec->rel2abs( __FILE__ )
+        parameters => '-I"' . $libdir . '" "' . File::Spec->rel2abs( __FILE__ ) . '"'
     };
 
     if (!Win32::Daemon::CreateService($service)) {
@@ -99,7 +99,7 @@ my $agent_as_context = FusionInventory::Agent->new(
     datadir => $directory . '/../share',
     vardir  => $directory . '/../var',
     libdir  => $directory . '/../lib',
-    killed  => sub { threads->exit(); }
+    sigterm  => sub { threads->exit(); }
 );
 
 $agent_as_context->{last_state} = SERVICE_START_PENDING;

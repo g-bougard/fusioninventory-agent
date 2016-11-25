@@ -7,7 +7,8 @@ use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Tools::Solaris;
 
 my @vmware_patterns = (
-    'VMware vmxnet virtual NIC driver',
+    'Hypervisor detected: VMware',
+    'VMware vmxnet3? virtual NIC driver',
     'Vendor: VMware\s+Model: Virtual disk',
     'Vendor: VMware,\s+Model: VMware Virtual ',
     ': VMware Virtual IDE CDROM Drive'
@@ -18,7 +19,10 @@ my @qemu_patterns = (
     ' QEMUAPIC ',
     'QEMU Virtual CPU',
     ': QEMU HARDDISK,',
-    ': QEMU CD-ROM,'
+    ': QEMU CD-ROM,',
+    ': QEMU Standard PC',
+    'Hypervisor detected: KVM',
+    'Booting paravirtualized kernel on KVM'
 );
 my $qemu_pattern = _assemblePatterns(@qemu_patterns);
 
@@ -90,6 +94,7 @@ sub _getType {
     my ($bios, $logger) = @_;
 
     if ($bios->{SMANUFACTURER}) {
+        return 'QEMU'    if $bios->{SMANUFACTURER} =~ /QEMU/;
         return 'Hyper-V' if $bios->{SMANUFACTURER} =~ /Microsoft/;
         return 'VMware'  if $bios->{SMANUFACTURER} =~ /VMware/;
     }
@@ -101,6 +106,7 @@ sub _getType {
     if ($bios->{SMODEL}) {
         return 'VMware'          if $bios->{SMODEL} =~ /VMware/;
         return 'Virtual Machine' if $bios->{SMODEL} =~ /Virtual Machine/;
+        return 'QEMU'            if $bios->{SMODEL} =~ /KVM/;
     }
     if ($bios->{BVERSION}) {
         return 'VirtualBox'  if $bios->{BVERSION} =~ /VirtualBox/;
