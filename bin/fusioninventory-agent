@@ -2,7 +2,9 @@
 
 use strict;
 use warnings;
-use lib './lib';
+
+use lib './bin';
+use setup;
 
 use English qw(-no_match_vars);
 use Getopt::Long;
@@ -41,6 +43,7 @@ GetOptions(
     'no-category=s',
     'no-httpd',
     'no-ssl-check',
+    'no-compression|C',
     'no-task=s',
     'no-p2p',
     'password|p=s',
@@ -67,16 +70,10 @@ GetOptions(
 pod2usage(-verbose => 0, -exitstatus => 0) if $options->{help};
 
 if ($options->{version}) {
-    print $FusionInventory::Agent::VERSION_STRING . "\n";
+    map { print $_."\n" } $FusionInventory::Agent::VERSION_STRING,
+        @{$FusionInventory::Agent::COMMENTS};
     exit 0;
 }
-
-my %setup = (
-    confdir => './etc',
-    datadir => './share',
-    libdir  => './lib',
-    vardir  => './var',
-);
 
 if ($options->{setup}) {
     foreach my $key (keys %setup) {
@@ -188,6 +185,8 @@ B<fusioninventory-agent> [options] [--server server|--local path]
     --ca-cert-dir=DIRECTORY        CA certificates directory
     --ca-cert-file=FILE            CA certificates file
     --no-ssl-check                 do not check server SSL certificate
+                                     (false)
+    -C --no-compression            do not compress communication with server
                                      (false)
     --timeout=TIME                 connection timeout, in seconds (180)
 

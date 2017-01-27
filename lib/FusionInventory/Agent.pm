@@ -11,6 +11,7 @@ use IO::Handle;
 use POSIX ":sys_wait_h"; # WNOHANG
 use Storable 'dclone';
 
+use FusionInventory::Agent::Version;
 use FusionInventory::Agent::Config;
 use FusionInventory::Agent::HTTP::Client::OCS;
 use FusionInventory::Agent::Logger;
@@ -18,20 +19,23 @@ use FusionInventory::Agent::Storage;
 use FusionInventory::Agent::Target::Local;
 use FusionInventory::Agent::Target::Server;
 use FusionInventory::Agent::Tools;
+use FusionInventory::Agent::Tools::Generic;
 use FusionInventory::Agent::Tools::Hostname;
 use FusionInventory::Agent::XML::Query::Prolog;
 
-our $VERSION = '2.3.18';
+our $VERSION = $FusionInventory::Agent::Version::VERSION;
+my $PROVIDER = $FusionInventory::Agent::Version::PROVIDER;
+our $COMMENTS = $FusionInventory::Agent::Version::COMMENTS || [];
 our $VERSION_STRING = _versionString($VERSION);
-our $AGENT_STRING = "FusionInventory-Agent_v$VERSION";
+our $AGENT_STRING = "$PROVIDER-Agent_v$VERSION";
 our $CONTINUE_WORD = "...";
 
 sub _versionString {
     my ($VERSION) = @_;
 
-    my $string = "FusionInventory Agent ($VERSION)";
-    if ($VERSION =~ /^\d\.\d\.99(\d\d)/) {
-        $string .= " **THIS IS A DEVELOPMENT RELEASE **";
+    my $string = "$PROVIDER Agent ($VERSION)";
+    if ($VERSION =~ /^\d+\.\d+\.(99\d\d|\d+-dev)$/) {
+        unshift @{$COMMENTS}, "** THIS IS A DEVELOPMENT RELEASE **";
     }
 
     return $string;
@@ -135,11 +139,17 @@ sub init {
     # install signal handler to handle graceful exit
     $self->_installSignalHandlers();
 
-    $self->{logger}->info("FusionInventory Agent starting")
+    $self->{logger}->info("$PROVIDER Agent starting")
         if $self->{config}->{daemon} || $self->{config}->{service};
+
+    $self->ApplyServiceOptimizations();
 
     $self->{logger}->info("Options 'no-task' and 'tasks' are both used. Be careful that 'no-task' always excludes tasks.")
         if ($self->{config}->isParamArrayAndFilled('no-task') && $self->{config}->isParamArrayAndFilled('tasks'));
+
+    foreach my $comment (@{$COMMENTS}) {
+        $self->{logger}->info($comment);
+    }
 
     $self->resetLastConfigLoad();
 }
@@ -210,6 +220,8 @@ sub reinit {
 
     $self->{tasks} = \@tasks;
 
+    $self->ApplyServiceOptimizations();
+
     $self->resetLastConfigLoad();
 
     $self->{logger}->debug('agent reinit done.');
@@ -219,6 +231,43 @@ sub resetLastConfigLoad {
     my ($self) = @_;
 
     $self->{lastConfigLoad} = time;
+}
+
+sub ApplyServiceOptimizations {
+    my ($self) = @_;
+
+    return unless ($self->{config}->{daemon} || $self->{config}->{service});
+
+    # Preload all IDS databases to avoid reload them all the time during inventory
+    if (grep { /^inventory$/i } @{$self->{tasksExecutionPlan}}) {
+        getPCIDeviceVendor(datadir => $self->{datadir});
+        getUSBDeviceVendor(datadir => $self->{datadir});
+        getEDIDVendor(datadir => $self->{datadir});
+    }
+
+    # win32 platform optimization
+    if ($OSNAME eq 'MSWin32') {
+        # Preload is64bit result to avoid a lot of WMI calls
+        FusionInventory::Agent::Tools::Win32->require();
+        FusionInventory::Agent::Tools::Win32::is64bit();
+    }
+}
+
+sub RunningServiceOptimization {
+    my ($self) = @_;
+
+    # win32 platform needs optimization
+    if ($OSNAME eq 'MSWin32') {
+        if ($self->{logger}->{verbosity} >= LOG_DEBUG) {
+            my $runmem = FusionInventory::Agent::Tools::Win32::getAgentMemorySize();
+            $self->{logger}->debug("Agent memory usage before freeing memory: $runmem");
+        }
+
+        FusionInventory::Agent::Tools::Win32::FreeAgentMem();
+
+        my $current_mem = FusionInventory::Agent::Tools::Win32::getAgentMemorySize();
+        $self->{logger}->info("Agent memory usage: $current_mem");
+    }
 }
 
 sub run {
@@ -252,6 +301,9 @@ sub run {
 
                 # Leave immediately if we passed in terminate method
                 last unless $self->getTargets();
+
+                # Call service optimization after each target run
+                $self->RunningServiceOptimization();
             }
 
             if ($self->{server}) {
@@ -297,7 +349,7 @@ sub terminate {
         delete $self->{current_runtask};
     }
 
-    $self->{logger}->info("FusionInventory Agent exiting")
+    $self->{logger}->info("$PROVIDER Agent exiting")
         if $self->{config}->{daemon} || $self->{config}->{service};
     $self->{current_task}->abort() if $self->{current_task};
 
@@ -322,6 +374,7 @@ sub _runTarget {
             ca_cert_file => $self->{config}->{'ca-cert-file'},
             ca_cert_dir  => $self->{config}->{'ca-cert-dir'},
             no_ssl_check => $self->{config}->{'no-ssl-check'},
+            no_compress  => $self->{config}->{'no-compression'},
         );
 
         my $prolog = FusionInventory::Agent::XML::Query::Prolog->new(
@@ -333,7 +386,10 @@ sub _runTarget {
             url     => $target->getUrl(),
             message => $prolog
         );
-        die "No answer from the server" unless $response;
+        unless ($response) {
+            $self->{logger}->error("No answer from server at ".$target->getUrl());
+            return;
+        }
 
         # update target
         my $content = $response->getContent();
@@ -417,6 +473,7 @@ sub _runTaskReal {
         ca_cert_file => $self->{config}->{'ca-cert-file'},
         ca_cert_dir  => $self->{config}->{'ca-cert-dir'},
         no_ssl_check => $self->{config}->{'no-ssl-check'},
+        no_compress  => $self->{config}->{'no-compression'},
     );
     delete $self->{current_task};
 }
@@ -442,9 +499,9 @@ sub getAvailableTasks {
     my $directory = $self->{libdir};
     $directory =~ s,\\,/,g;
     my $subdirectory = "FusionInventory/Agent/Task";
-    # look for all perl modules here
-    foreach my $file (File::Glob::glob("$directory/$subdirectory/*.pm")) {
-        next unless $file =~ m{($subdirectory/(\S+)\.pm)$};
+    # look for all Version perl modules around here
+    foreach my $file (File::Glob::glob("$directory/$subdirectory/*/Version.pm")) {
+        next unless $file =~ m{($subdirectory/(\S+)/Version\.pm)$};
         my $module = file2module($1);
         my $name = file2module($2);
 
@@ -497,18 +554,17 @@ sub _getTaskVersion {
 
     if (!$module->require()) {
         $logger->debug2("module $module does not compile: $@") if $logger;
-        return;
-    }
 
-    if (!$module->isa('FusionInventory::Agent::Task')) {
-        $logger->debug2("module $module is not a task") if $logger;
+        # Don't keep trace of module, only really needed to fix perl 5.8 issue
+        delete $INC{module2file($module)};
+
         return;
     }
 
     my $version;
     {
         no strict 'refs';  ## no critic
-        $version = ${$module . '::VERSION'};
+        $version = &{$module . '::VERSION'};
     }
 
     return $version;
@@ -533,7 +589,7 @@ sub _isAlreadyRunning {
 sub _loadState {
     my ($self) = @_;
 
-    my $data = $self->{storage}->restore(name => 'FusionInventory-Agent');
+    my $data = $self->{storage}->restore(name => "$PROVIDER-Agent");
 
     $self->{deviceid} = $data->{deviceid} if $data->{deviceid};
 }
@@ -542,7 +598,7 @@ sub _saveState {
     my ($self) = @_;
 
     $self->{storage}->save(
-        name => 'FusionInventory-Agent',
+        name => "$PROVIDER-Agent",
         data => {
             deviceid => $self->{deviceid},
         }
@@ -677,7 +733,7 @@ sub _createDaemon {
     my $config = $self->{config};
     my $logger = $self->{logger};
     my $pidfile  = $config->{pidfile} ||
-        $self->{vardir} . '/fusioninventory.pid';
+        $self->{vardir} . '/'.lc($PROVIDER).'.pid';
     if ($self->_isAlreadyRunning($pidfile)) {
         $logger->error("An agent is already running, exiting...");
         exit 1;
@@ -739,7 +795,7 @@ sub _reloadConfIfNeeded {
     }
 }
 
-sub _isReloadConfNeeded() {
+sub _isReloadConfNeeded {
     my ($self) = @_;
 
     my $time = time;
@@ -752,7 +808,7 @@ __END__
 
 =head1 NAME
 
-FusionInventory::Agent - Fusion Inventory agent
+FusionInventory::Agent - FusionInventory agent
 
 =head1 DESCRIPTION
 
