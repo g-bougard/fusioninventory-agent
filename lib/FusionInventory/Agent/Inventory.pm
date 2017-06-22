@@ -9,8 +9,12 @@ use Digest::MD5 qw(md5_base64);
 use English qw(-no_match_vars);
 use XML::TreePP;
 
+use FusionInventory::Agent::Logger;
 use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Version;
+
+# Always sort keys in Dumper while computing checksum on HASH
+$Data::Dumper::Sortkeys = 1;
 
 my %fields = (
     BIOS             => [ qw/SMODEL SMANUFACTURER SSN BDATE BVERSION
@@ -38,12 +42,13 @@ my %fields = (
                              PRODUCTID PCISUBSYSTEMID PCISLOT TYPE REV/ ],
     CPUS             => [ qw/CACHE CORE DESCRIPTION MANUFACTURER NAME THREAD
                              SERIAL STEPPING FAMILYNAME FAMILYNUMBER MODEL
-                             SPEED ID EXTERNAL_CLOCK ARCH/ ],
+                             SPEED ID EXTERNAL_CLOCK ARCH CORECOUNT/ ],
     DRIVES           => [ qw/CREATEDATE DESCRIPTION FREE FILESYSTEM LABEL
                              LETTER SERIAL SYSTEMDRIVE TOTAL TYPE VOLUMN/ ],
     ENVS             => [ qw/KEY VAL/ ],
     INPUTS           => [ qw/NAME MANUFACTURER CAPTION DESCRIPTION INTERFACE
                              LAYOUT POINTINGTYPE TYPE/ ],
+    FIREWALL         => [ qw/PROFILE STATUS DESCRIPTION IPADDRESS IPADDRESS6/ ],
     LICENSEINFOS     => [ qw/NAME FULLNAME KEY COMPONENTS TRIAL UPDATE OEM
                              ACTIVATION_DATE PRODUCTID/ ],
     LOCAL_GROUPS     => [ qw/ID MEMBER NAME/ ],
@@ -122,7 +127,7 @@ sub new {
     my ($class, %params) = @_;
 
     my $self = {
-        logger         => $params{logger},
+        logger         => $params{logger} || FusionInventory::Agent::Logger->new(),
         fields         => \%fields,
         content        => {
             HARDWARE => {
@@ -418,7 +423,7 @@ sub computeChecksum {
                 );
             };
             if (ref($self->{last_state_content}) ne 'HASH') {
-                $self->{last_state_file} = {};
+                $self->{last_state_content} = {};
             }
         } else {
             $logger->debug(
@@ -456,7 +461,7 @@ sub saveLastState {
     my $logger = $self->{logger};
 
     if (!defined($self->{last_state_content})) {
-        $self->processChecksum();
+        $self->computeChecksum();
     }
     if ($self->{last_state_file}) {
         eval {
