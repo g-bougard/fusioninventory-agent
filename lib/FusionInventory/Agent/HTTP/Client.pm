@@ -29,6 +29,7 @@ sub new {
         password     => $params{password},
         ssl_set      => 0,
         no_ssl_check => $params{no_ssl_check},
+        no_compress  => $params{no_compress},
         ca_cert_dir  => $params{ca_cert_dir},
         ca_cert_file => $params{ca_cert_file}
     };
@@ -144,8 +145,12 @@ sub _setSSLOptions {
             "(workaround: use 'no-ssl-check' configuration parameter)"
             if $EVAL_ERROR;
 
-        if ($self->{logger}{verbosity} > LOG_DEBUG2) {
-            $Net::SSLeay::trace = 2;
+        # Activate SSL Debug if Stderr is in backends
+        my $DEBUG_SSL = 0;
+        $DEBUG_SSL = grep { ref($_) =~/Stderr$/ } @{$self->{logger}{backends}}
+            if (ref($self->{logger}{backends}) eq 'ARRAY');
+        if ( $DEBUG_SSL && $self->{logger}{verbosity} >= LOG_DEBUG2 ) {
+            $Net::SSLeay::trace = 3;
         }
 
         if ($LWP::VERSION >= 6) {

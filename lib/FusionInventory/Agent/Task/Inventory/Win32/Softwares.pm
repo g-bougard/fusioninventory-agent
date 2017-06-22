@@ -13,6 +13,7 @@ use File::Basename;
 
 use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Tools::Win32;
+use FusionInventory::Agent::Tools::Win32::Constants;
 
 my $seen = {};
 
@@ -273,6 +274,8 @@ sub _keyLastWriteDateString {
 
     my @lastWrite = FileTimeToSystemTime($key->Information("LastWrite"));
 
+    return unless (@lastWrite > 3);
+
     return sprintf("%04s%02s%02s",$lastWrite[0],$lastWrite[1],$lastWrite[3]);
 }
 
@@ -315,6 +318,8 @@ sub _getSoftwaresList {
             GUID             => $guid,
             USERNAME         => $params{username},
             USERID           => $params{userid},
+            SYSTEM_CATEGORY  => $data->{'/SystemComponent'} && hex2dec($data->{'/SystemComponent'}) ?
+                CATEGORY_SYSTEM_COMPONENT : CATEGORY_APPLICATION
         };
 
         # Workaround for #415
@@ -345,6 +350,10 @@ sub _getHotfixesList {
         if ($object->{Description} && $object->{Description} =~ /^(Security Update|Hotfix|Update)/) {
             $releaseType = $1;
         }
+        my $systemCategory = !$releaseType       ? CATEGORY_UPDATE :
+            ($releaseType =~ /^Security Update/) ? CATEGORY_SECURITY_UPDATE :
+            $releaseType =~ /^Hotfix/            ? CATEGORY_HOTFIX :
+                                                   CATEGORY_UPDATE ;
 
         next unless $object->{HotFixID} =~ /KB(\d{4,10})/i;
         push @$list, {
@@ -353,7 +362,8 @@ sub _getHotfixesList {
             INSTALLDATE  => _dateFormat($object->{InstalledOn}),
             FROM         => "WMI",
             RELEASE_TYPE => $releaseType,
-            ARCH         => $params{is64bit} ? 'x86_64' : 'i586'
+            ARCH         => $params{is64bit} ? 'x86_64' : 'i586',
+            SYSTEM_CATEGORY => $systemCategory
         };
 
     }

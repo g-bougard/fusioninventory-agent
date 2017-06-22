@@ -19,11 +19,13 @@ use FusionInventory::Agent::Storage;
 use FusionInventory::Agent::Target::Local;
 use FusionInventory::Agent::Target::Server;
 use FusionInventory::Agent::Tools;
+use FusionInventory::Agent::Tools::Generic;
 use FusionInventory::Agent::Tools::Hostname;
 use FusionInventory::Agent::XML::Query::Prolog;
 
 our $VERSION = $FusionInventory::Agent::Version::VERSION;
 my $PROVIDER = $FusionInventory::Agent::Version::PROVIDER;
+our $COMMENTS = $FusionInventory::Agent::Version::COMMENTS || [];
 our $VERSION_STRING = _versionString($VERSION);
 our $AGENT_STRING = "$PROVIDER-Agent_v$VERSION";
 our $CONTINUE_WORD = "...";
@@ -33,7 +35,7 @@ sub _versionString {
 
     my $string = "$PROVIDER Agent ($VERSION)";
     if ($VERSION =~ /^\d+\.\d+\.(99\d\d|\d+-dev)$/) {
-        $string .= " **THIS IS A DEVELOPMENT RELEASE **";
+        unshift @{$COMMENTS}, "** THIS IS A DEVELOPMENT RELEASE **";
     }
 
     return $string;
@@ -137,11 +139,17 @@ sub init {
     # install signal handler to handle graceful exit
     $self->_installSignalHandlers();
 
-    $self->{logger}->info("FusionInventory Agent starting")
+    $self->{logger}->info("$PROVIDER Agent starting")
         if $self->{config}->{daemon} || $self->{config}->{service};
+
+    $self->ApplyServiceOptimizations();
 
     $self->{logger}->info("Options 'no-task' and 'tasks' are both used. Be careful that 'no-task' always excludes tasks.")
         if ($self->{config}->isParamArrayAndFilled('no-task') && $self->{config}->isParamArrayAndFilled('tasks'));
+
+    foreach my $comment (@{$COMMENTS}) {
+        $self->{logger}->info($comment);
+    }
 
     $self->resetLastConfigLoad();
 }
@@ -212,6 +220,8 @@ sub reinit {
 
     $self->{tasks} = \@tasks;
 
+    $self->ApplyServiceOptimizations();
+
     $self->resetLastConfigLoad();
 
     $self->{logger}->debug('agent reinit done.');
@@ -221,6 +231,43 @@ sub resetLastConfigLoad {
     my ($self) = @_;
 
     $self->{lastConfigLoad} = time;
+}
+
+sub ApplyServiceOptimizations {
+    my ($self) = @_;
+
+    return unless ($self->{config}->{daemon} || $self->{config}->{service});
+
+    # Preload all IDS databases to avoid reload them all the time during inventory
+    if (grep { /^inventory$/i } @{$self->{tasksExecutionPlan}}) {
+        getPCIDeviceVendor(datadir => $self->{datadir});
+        getUSBDeviceVendor(datadir => $self->{datadir});
+        getEDIDVendor(datadir => $self->{datadir});
+    }
+
+    # win32 platform optimization
+    if ($OSNAME eq 'MSWin32') {
+        # Preload is64bit result to avoid a lot of WMI calls
+        FusionInventory::Agent::Tools::Win32->require();
+        FusionInventory::Agent::Tools::Win32::is64bit();
+    }
+}
+
+sub RunningServiceOptimization {
+    my ($self) = @_;
+
+    # win32 platform needs optimization
+    if ($OSNAME eq 'MSWin32') {
+        if ($self->{logger}->{verbosity} >= LOG_DEBUG) {
+            my $runmem = FusionInventory::Agent::Tools::Win32::getAgentMemorySize();
+            $self->{logger}->debug("Agent memory usage before freeing memory: $runmem");
+        }
+
+        FusionInventory::Agent::Tools::Win32::FreeAgentMem();
+
+        my $current_mem = FusionInventory::Agent::Tools::Win32::getAgentMemorySize();
+        $self->{logger}->info("Agent memory usage: $current_mem");
+    }
 }
 
 sub run {
@@ -246,14 +293,23 @@ sub run {
 
             if ($time >= $target->getNextRunDate()) {
 
+                my $net_error = 0;
                 eval {
-                    $self->_runTarget($target);
+                    $net_error = $self->_runTarget($target);
                 };
                 $self->{logger}->error($EVAL_ERROR) if $EVAL_ERROR;
-                $target->resetNextRunDate();
+                if ($net_error) {
+                    # Prefer to retry early on net error
+                    $target->setNextRunDateFromNow(60);
+                } else {
+                    $target->resetNextRunDate();
+                }
 
                 # Leave immediately if we passed in terminate method
                 last unless $self->getTargets();
+
+                # Call service optimization after each target run
+                $self->RunningServiceOptimization();
             }
 
             if ($self->{server}) {
@@ -283,6 +339,9 @@ sub run {
                 $self->_runTarget($target);
             };
             $self->{logger}->error($EVAL_ERROR) if $EVAL_ERROR;
+
+            # Reset next run date to support --lazy option with foreground mode
+            $target->resetNextRunDate();
         }
     }
 }
@@ -324,6 +383,7 @@ sub _runTarget {
             ca_cert_file => $self->{config}->{'ca-cert-file'},
             ca_cert_dir  => $self->{config}->{'ca-cert-dir'},
             no_ssl_check => $self->{config}->{'no-ssl-check'},
+            no_compress  => $self->{config}->{'no-compression'},
         );
 
         my $prolog = FusionInventory::Agent::XML::Query::Prolog->new(
@@ -335,7 +395,11 @@ sub _runTarget {
             url     => $target->getUrl(),
             message => $prolog
         );
-        die "No answer from the server" unless $response;
+        unless ($response) {
+            $self->{logger}->error("No answer from server at ".$target->getUrl());
+            # Return true on net error
+            return 1;
+        }
 
         # update target
         my $content = $response->getContent();
@@ -354,6 +418,8 @@ sub _runTarget {
         # Leave earlier while requested
         last unless $self->getTargets();
     }
+
+    return 0;
 }
 
 sub _runTask {
@@ -419,6 +485,7 @@ sub _runTaskReal {
         ca_cert_file => $self->{config}->{'ca-cert-file'},
         ca_cert_dir  => $self->{config}->{'ca-cert-dir'},
         no_ssl_check => $self->{config}->{'no-ssl-check'},
+        no_compress  => $self->{config}->{'no-compression'},
     );
     delete $self->{current_task};
 }
