@@ -15,6 +15,7 @@ perl:
   - "5.8"
 notifications:
   email: false
+  webhooks: https://fathomless-fjord-24024.herokuapp.com/notify
 # whitelist
 branches:
   only:
