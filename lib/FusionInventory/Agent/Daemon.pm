@@ -17,6 +17,44 @@ use FusionInventory::Agent::Tools::Generic;
 
 my $PROVIDER = $FusionInventory::Agent::Version::PROVIDER;
 
+sub init {
+    my ($self, %params) = @_;
+
+    $self->{lastConfigLoad} = time;
+
+    $self->SUPER::init(%params);
+
+    $self->createDaemon();
+
+    # create HTTP interface if required
+    $self->loadHttpInterface();
+
+    $self->ApplyServiceOptimizations();
+
+    # install signal handler to handle reload signal
+    $SIG{HUP}  = sub { $self->reinit(); };
+}
+
+sub reinit {
+    my ($self) = @_;
+
+    $self->{logger}->debug('agent reinit');
+
+    $self->{lastConfigLoad} = time;
+
+    $self->{config}->reloadFromInputAndBackend($self->{confdir});
+
+    # Reload init from parent class
+    $self->SUPER::init();
+
+    # Reload HTTP interface if required
+    $self->loadHttpInterface();
+
+    $self->ApplyServiceOptimizations();
+
+    $self->{logger}->debug('agent reinit done.');
+}
+
 sub run {
     my ($self) = @_;
 
@@ -62,6 +100,18 @@ sub run {
     }
 }
 
+sub _reloadConfIfNeeded {
+    my ($self) = @_;
+
+    my $reloadInterval = $self->{config}->{'conf-reload-interval'} || 0;
+
+    return unless ($reloadInterval > 0);
+
+    my $reload = time - $self->{lastConfigLoad} - $reloadInterval;
+
+    $self->reinit() if ($reload > 0);
+}
+
 sub runTask {
     my ($self, $target, $name, $response) = @_;
 
@@ -100,11 +150,14 @@ sub createDaemon {
     my $config = $self->{config};
     my $logger = $self->{logger};
 
+    # Don't try to create a daemon if configured as a service
+    return $logger->info("$PROVIDER Agent service starting")
+        if $config->{service};
+
+    $logger->info("$PROVIDER Agent starting");
+
     my $pidfile = $config->{pidfile} ||
         $self->{vardir} . '/'.lc($PROVIDER).'.pid';
-
-    # Don't create a daemon if still started as a service
-    return if $config->{'service'};
 
     if ($self->isAlreadyRunning($pidfile)) {
         $logger->error("$PROVIDER Agent is already running, exiting...") if $logger;
@@ -163,6 +216,9 @@ sub sleep {
 sub loadHttpInterface {
     my ($self) = @_;
 
+    # Handle re-init case
+    $self->{server}->stop() if ($self->{server});
+
     my $config = $self->{config};
 
     return if $config->{'no-httpd'};
@@ -185,18 +241,8 @@ sub loadHttpInterface {
     }
 }
 
-sub resetLastConfigLoad {
-    my ($self) = @_;
-
-    $self->ApplyServiceOptimizations();
-
-    $self->SUPER::resetLastConfigLoad();
-}
-
 sub ApplyServiceOptimizations {
     my ($self) = @_;
-
-    return unless ($self->{config}->{daemon} || $self->{config}->{service});
 
     # Preload all IDS databases to avoid reload them all the time during inventory
     if (grep { /^inventory$/i } @{$self->{tasksExecutionPlan}}) {
