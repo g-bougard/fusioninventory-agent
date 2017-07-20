@@ -4,8 +4,6 @@ use strict;
 use warnings;
 use base 'Exporter';
 
-use feature 'unicode_strings';
-
 use English qw(-no_match_vars);
 
 use FusionInventory::Agent::Tools;
@@ -951,10 +949,10 @@ sub _getCanonicalString {
     $value = getUtf8String($value);
 
     # reduce linefeeds which can be found in descriptions or comments
-    $value =~ s/[[:cntrl:]]+\n/\n/gs;
+    $value =~ s/\p{Control}+\n/\n/g;
 
     # truncate after first invalid character but keep newline as valid
-    $value =~ s/[^[:print:]\n].*$//;
+    $value =~ s/[^\p{Print}\n].*$//;
 
     return $value;
 }
