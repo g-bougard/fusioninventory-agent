@@ -99,6 +99,11 @@ my @sysdescr_rules = (
     },
 );
 
+# rules on model name to reset manufacturer to real vendor
+my %sysmodel_first_word = (
+    'dell'           => { manufacturer => 'Dell', },
+);
+
 # common base variables
 my %base_variables = (
     CPU          => {
@@ -336,9 +341,13 @@ sub getDeviceInfo {
         $device->{MANUFACTURER} = $manufacturer if $manufacturer;
     }
 
-    # fallback vendor, using manufacturer
-    if (!exists $device->{VENDOR} && exists $device->{MANUFACTURER}) {
-        $device->{VENDOR} = $device->{MANUFACTURER};
+    # reset manufacturer by rule as real vendor based on first model word
+    if (exists $device->{MODEL}) {
+        my ($first_word) = $device->{MODEL} =~ /(\S+)/;
+        my $result = $sysmodel_first_word{lc($first_word)};
+        if ($result && $result->{manufacturer}) {
+            $device->{MANUFACTURER} = $result->{manufacturer};
+        }
     }
 
     # remaining informations
@@ -930,8 +939,8 @@ sub _getCanonicalString {
     $value = hex2char($value);
     return unless $value;
 
-    # truncate after first null-character
-    $value =~ s/\000.*$//;
+    # truncate after first invalid character but keep newline as valid
+    $value =~ s/[^[:print:]\n].*$//;
 
     # unquote string
     $value =~ s/^\\?["']//;
@@ -1125,6 +1134,7 @@ sub _addKnownMacAddresses {
 
         # add remaining ones
         push @{$port->{CONNECTIONS}->{CONNECTION}->{MAC}}, @adresses;
+        @{$port->{CONNECTIONS}->{CONNECTION}->{MAC}} = uniq(@{$port->{CONNECTIONS}->{CONNECTION}->{MAC}});
     }
 }
 
@@ -1309,7 +1319,8 @@ sub _getLLDPInfo {
 
     while (my ($suffix, $mac) = each %{$lldpRemChassisId}) {
         my $sysdescr = _getCanonicalString($lldpRemSysDesc->{$suffix});
-        next unless $sysdescr;
+        my $sysname = _getCanonicalString($lldpRemSysName->{$suffix});
+        next unless ($sysdescr || $sysname);
 
         # We only support macAddress as LldpChassisIdSubtype at the moment
         my $subtype = $ChassisIdSubType->{$suffix} || "n/a";
@@ -1322,9 +1333,10 @@ sub _getLLDPInfo {
         }
 
         my $connection = {
-            SYSMAC   => lc(alt2canonical($mac)),
-            SYSDESCR => $sysdescr
+            SYSMAC => lc(alt2canonical($mac))
         };
+        $connection->{SYSDESCR} = $sysdescr if $sysdescr;
+        $connection->{SYSNAME} = $sysname if $sysname;
 
         # portId is either a port number or a port mac address,
         # duplicating chassiId
@@ -1335,9 +1347,6 @@ sub _getLLDPInfo {
 
         my $ifdescr = _getCanonicalString($lldpRemPortDesc->{$suffix});
         $connection->{IFDESCR} = $ifdescr if $ifdescr;
-
-        my $sysname = _getCanonicalString($lldpRemSysName->{$suffix});
-        $connection->{SYSNAME} = $sysname if $sysname;
 
         my $id           = _getElement($suffix, -2);
         my $interface_id =
@@ -1534,14 +1543,36 @@ sub _getVlans {
         }
     }
 
-    # For other switches, we use another method
-    my $vlanId = $snmp->walk('.1.0.8802.1.1.2.1.5.32962.1.2.1.1.1');
-    if($vlanId){
-        while (my ($port, $vlan) = each %{$vlanId}) {
-            push @{$results->{$port}}, {
-                NUMBER => $vlan,
-                NAME   => "VLAN " . $vlan
-            };
+    # For other switches, we use another methods
+    # used for Alcatel-Lucent and ExtremNetworks (and perhaps others)
+    my $vlanIdName = $snmp->walk('.1.0.8802.1.1.2.1.5.32962.1.2.3.1.2');
+    my $portLink = $snmp->walk('.1.0.8802.1.1.2.1.3.7.1.3');
+    if($vlanIdName && $portLink){
+        while (my ($suffix, $vlanName) = each %{$vlanIdName}) {
+            my ($port, $vlan) = split(/\./, $suffix);
+            if ($portLink->{$port}) {
+                # case generic where $portLink = port number
+                my $portnumber = $portLink->{$port};
+                # case Cisco where $portLink = port name
+                unless ($portLink->{$port} =~ /^[0-9]+$/) {
+                    $portnumber = $port;
+                }
+                push @{$results->{$portnumber}}, {
+                    NUMBER => $vlan,
+                    NAME   => $vlanName
+                };
+            }
+        }
+    } else {
+        # A last method
+        my $vlanId = $snmp->walk('.1.0.8802.1.1.2.1.5.32962.1.2.1.1.1');
+        if($vlanId){
+            while (my ($port, $vlan) = each %{$vlanId}) {
+                push @{$results->{$port}}, {
+                    NUMBER => $vlan,
+                    NAME   => "VLAN " . $vlan
+                };
+            }
         }
     }
 

@@ -325,43 +325,19 @@ sub _extractUSBStorage {
         SERIAL       => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?serial_num$/, $hash),
         MODEL        => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?device_model/, $hash) || $hash->{_name},
         FIRMWARE     => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?bcd_device$/, $hash),
-        MANUFACTURER => getCanonicalManufacturer(_extractValueInHashWithKeyPattern(qr/(?:\w_)?manufacturer/, $hash)) || '',
+        MANUFACTURER => getCanonicalManufacturer(_extractValueInHashWithKeyPattern(qr/(?:\w+_)?manufacturer/, $hash)) || '',
         DISKSIZE     => _extractDiskSize($hash)
     };
 
     return $storage;
 }
 
-sub _fromBytesToMegaBytes {
-    my ($nb) = @_;
-
-    return 0 unless $nb && looks_like_number($nb);
-    return sprintf("%d", $nb / (1024 * 1024));
-}
-
-sub _fromGigaBytesToMegaBytes {
-    my ($nb) = @_;
-
-    return 0 unless $nb && looks_like_number($nb);
-    return sprintf("%d", $nb * 1024);
-}
-
 sub _extractDiskSize {
     my ($hash) = @_;
 
-    my $diskSize;
-    if ($hash->{size_in_bytes}) {
-        $diskSize = _fromBytesToMegaBytes($hash->{size_in_bytes});
-    } elsif ($hash->{size}) {
-        my $sizeUnit = _getSizeUnit($hash->{size});
-        if ($sizeUnit eq 'MB') {
-            $diskSize = sprintf("%d", $hash->{size})
-        } elsif ($sizeUnit eq 'GB') {
-            $diskSize = _fromGigaBytesToMegaBytes(_cleanSizeString($hash->{size}));
-        }
-    }
-
-    return $diskSize;
+    return $hash->{size_in_bytes} ?
+        getCanonicalSize($hash->{size_in_bytes} . ' bytes', 1024) :
+            getCanonicalSize($hash->{size}, 1024);
 }
 
 sub _cleanSizeString {
@@ -430,7 +406,7 @@ sub _extractFireWireStorage {
         SERIAL       => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?serial_num$/, $hash) || '',
         MODEL        => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?product_id$/, $hash) || '',
         FIRMWARE     => _extractValueInHashWithKeyPattern(qr/^(?:\w_)?bcd_device$/, $hash) || '',
-        MANUFACTURER => getCanonicalManufacturer(_extractValueInHashWithKeyPattern(qr/(?:\w_)?manufacturer/, $hash)) || '',
+        MANUFACTURER => getCanonicalManufacturer(_extractValueInHashWithKeyPattern(qr/(?:\w+_)?manufacturer/, $hash)) || '',
         DISKSIZE     => _extractDiskSize($hash) || ''
     };
 
