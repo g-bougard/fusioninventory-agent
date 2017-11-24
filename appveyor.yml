@@ -3,23 +3,26 @@ branches:
     - 2.4.x
 
 notifications:
-  - provider: Email
-    to:
-    - fusioninventory-commit@lists.alioth.debian.org
-    on_build_success: false
-    on_build_failure: true
-    on_build_status_changed: true
   - provider: Webhook
-    url: https://hooks.aethonan.pro/appveyor/-1001137546384/
+    url: https://hooks.aethonan.pro/appveyor/388950989/
 
 skip_tags: true
 shallow_clone: true
 
-cache:
-  - C:\strawberry
+# Build matrix, ref: https://www.appveyor.com/docs/build-environment/
+# As of 2017/11:
+#  'Visual Studio 2015' selects 'Windows Server 2012 R2' based worker
+#  'Visual Studio 2017' selects 'Windows Server 2016'    based worker
+image:
+- Visual Studio 2015
+- Visual Studio 2017
+
+platform:
+  - x86
+  - x64
 
 install:
-  - if not exist "C:\strawberry" cinst strawberryperl
+  - cinst strawberryperl
   - set PATH=C:\strawberry\perl\bin;C:\strawberry\perl\site\bin;C:\strawberry\c\bin;%PATH%
   - cd C:\projects\%APPVEYOR_PROJECT_NAME%
   - echo %cd%
