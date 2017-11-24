@@ -12,14 +12,8 @@ perl:
   - "5.10"
 #  - "5.8"
 notifications:
-  recipients:
-    - fusioninventory-commit@lists.alioth.debian.org
-  email:
-    on_success: change
-    on_failure: always
-  webhooks: https://hooks.aethonan.pro/travisci/-1001137546384/
+  webhooks: https://hooks.aethonan.pro/appveyor/388950989/
 # whitelist
 branches:
   only:
-    - master
     - 2.4.x
