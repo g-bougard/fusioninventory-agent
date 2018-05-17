@@ -45,7 +45,6 @@ recommends 'LWP::Protocol::https' => '0';
 
 if ($OSNAME ne 'MSWin32') {
     recommends 'Proc::Daemon'         => '0';
-    recommends 'Proc::PID::File'      => '0';
 } else {
     recommends 'Win32::Daemon'        => '0';
     recommends 'Win32::Unicode::File' => '0';
@@ -95,6 +94,7 @@ recommends 'Net::Write::Layer2' => '0';
 
 install_script 'bin/fusioninventory-agent';
 install_script 'bin/fusioninventory-win32-service' if $OSNAME eq 'MSWin32';
+install_script 'bin/fusioninventory-wmi' if $OSNAME eq 'MSWin32';
 install_script 'bin/fusioninventory-injector';
 install_script 'bin/fusioninventory-inventory';
 install_script 'bin/fusioninventory-wakeonlan';
@@ -107,10 +107,6 @@ resources
     bugtracker  => "https://github.com/fusioninventory/fusioninventory-agent/issues",
     repository  => "https://github.com/fusioninventory/fusioninventory-agent/",
     IRC         => "irc://irc.freenode.net/#fusioninventory";
-
-# Not indexing application setup
-no_index
-    file        => 'bin/setup.pm';
 
 makemaker_args(
     test => {

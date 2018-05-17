@@ -3,6 +3,8 @@ package FusionInventory::Agent::Task::Inventory::Linux::Distro::OSRelease;
 use strict;
 use warnings;
 
+use parent 'FusionInventory::Agent::Task::Inventory::Module';
+
 use FusionInventory::Agent::Tools;
 
 sub isEnabled {
@@ -13,7 +15,6 @@ sub doInventory {
     my (%params) = @_;
 
     my $inventory = $params{inventory};
-    my $logger    = $params{logger};
 
     my $handle = getFileHandle(file => '/etc/os-release');
 

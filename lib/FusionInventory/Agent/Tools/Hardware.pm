@@ -101,49 +101,6 @@ my @sysdescr_rules = (
     },
 );
 
-# rules on model name to reset manufacturer to real vendor
-my %sysmodel_first_word = (
-    'dell'           => { manufacturer => 'Dell', },
-);
-
-# common base variables
-my %base_variables = (
-    CPU          => {
-        oid  => '.1.3.6.1.4.1.9.9.109.1.1.1.1.3.1',
-        type => 'count',
-    },
-    SNMPHOSTNAME => {
-        oid  => [
-            '.1.3.6.1.2.1.1.5.0',
-            '.1.3.6.1.4.1.2699.1.2.1.2.1.1.2.1', # PRINTER-PORT-MONITOR-MIB, ppmPrinterName
-        ],
-        type => 'string',
-    },
-    LOCATION     => {
-        oid  => '.1.3.6.1.2.1.1.6.0',
-        type => 'string',
-    },
-    CONTACT      => {
-        oid  => '.1.3.6.1.2.1.1.4.0',
-        type => 'string',
-    },
-    UPTIME       => {
-        oid  => '.1.3.6.1.2.1.1.3.0',
-        type => 'string',
-    },
-    MEMORY       => {
-        oid  => [
-            '.1.3.6.1.4.1.9.2.1.8.0',
-            '.1.3.6.1.2.1.25.2.3.1.5.1',
-        ],
-        type => 'memory',
-    },
-    RAM          => {
-        oid  => '.1.3.6.1.4.1.9.3.6.6.0',
-        type => 'memory',
-    },
-);
-
 # common interface variables
 my %interface_variables = (
     IFNUMBER         => {
@@ -340,55 +297,11 @@ sub _getDevice {
         }
     }
 
-    # fallback model identification attempt, using type-specific OID value
-    if (!exists $device->{MODEL}) {
-        my $model = exists $device->{TYPE} && $device->{TYPE} eq 'PRINTER' ?
-            $snmp->get('.1.3.6.1.2.1.25.3.2.1.3.1')    :
-            exists $device->{TYPE} && $device->{TYPE} eq 'POWER' ?
-            $snmp->get('.1.3.6.1.2.1.33.1.1.5.0')      : # UPS-MIB
-            $snmp->get('.1.3.6.1.2.1.47.1.1.1.1.13.1') ;
-        $device->{MODEL} = getCanonicalString($model) if $model;
-    }
+    # Find and set model
+    $device->setModel();
 
-    # fallback manufacturer identification attempt, using type-agnostic OID
-    if (!exists $device->{MANUFACTURER}) {
-        my $manufacturer = $snmp->get('.1.3.6.1.2.1.43.8.2.1.14.1.1');
-        $device->{MANUFACTURER} = $manufacturer if $manufacturer;
-    }
-
-    # reset manufacturer by rule as real vendor based on first model word
-    if (exists $device->{MODEL}) {
-        my ($first_word) = $device->{MODEL} =~ /(\S+)/;
-        my $result = $sysmodel_first_word{lc($first_word)};
-        if ($result && $result->{manufacturer}) {
-            $device->{MANUFACTURER} = $result->{manufacturer};
-        }
-    }
-
-    # remaining informations
-    foreach my $key (keys %base_variables) {
-        my $variable = $base_variables{$key};
-
-        my $raw_value;
-        if (ref $variable->{oid} eq 'ARRAY') {
-            foreach my $oid (@{$variable->{oid}}) {
-                $raw_value = $snmp->get($oid);
-                last if defined $raw_value;
-            }
-        } else {
-            $raw_value = $snmp->get($variable->{oid});
-        }
-        next unless defined $raw_value;
-
-        my $type = $variable->{type};
-        my $value =
-            $type eq 'memory' ? _getCanonicalMemory($raw_value) :
-            $type eq 'string' ? getCanonicalString($raw_value) :
-            $type eq 'count'  ? _getCanonicalCount($raw_value)  :
-                                $raw_value;
-
-        $device->{$key} = $value if defined $value;
-    }
+    # Get some common informations like SNMPHOSTNAME, LOCATION, UPTIME and CONTACT
+    $device->setBaseInfos();
 
     # Cleanup some strings from whitespaces
     foreach my $key (qw(MODEL SNMPHOSTNAME LOCATION CONTACT)) {
@@ -540,6 +453,9 @@ sub getDeviceFullInfo {
     # second, use results to build the object
     $device->{INFO} = $info ;
 
+    # Set other requested infos
+    $device->setInventoryBaseInfos();
+
     _setGenericProperties(
         device => $device,
         snmp   => $snmp,
@@ -627,7 +543,7 @@ sub _setGenericProperties {
                 $type eq 'mac'      ? getCanonicalMacAddress($raw_value) :
                 $type eq 'constant' ? getCanonicalConstant($raw_value)   :
                 $type eq 'string'   ? getCanonicalString($raw_value)     :
-                $type eq 'count'    ? _getCanonicalCount($raw_value)      :
+                $type eq 'count'    ? getCanonicalCount($raw_value)      :
                                       $raw_value;
             $ports->{$suffix}->{$key} = $value
                 if defined $value && $value ne '';
@@ -653,13 +569,13 @@ sub _setGenericProperties {
         next unless $value;
         # safety checks
         if (! exists $ports->{$value}) {
-            $logger->warning(
+            $logger->debug(
                 "unknown interface $value for IP address $suffix, ignoring"
             ) if $logger;
             next;
         }
         if ($suffix !~ /^$ip_address_pattern$/) {
-            $logger->error("invalid IP address $suffix") if $logger;
+            $logger->debug("invalid IP address $suffix") if $logger;
             next;
         }
         $ports->{$value}->{IP} = $suffix;
@@ -701,7 +617,7 @@ sub _setPrinterProperties {
             $type = $consumable_types{$type_id};
         } else {
             # fallback on description
-            my $description = $descriptions->{$consumable_id};
+            my $description = getCanonicalString($descriptions->{$consumable_id});
             $type =
                 $description =~ /maintenance/i ? 'MAINTENANCEKIT' :
                 $description =~ /fuser/i       ? 'FUSERKIT'       :
@@ -710,21 +626,27 @@ sub _setPrinterProperties {
         }
 
         if (!$type) {
-            $logger->debug("unknown consumable type $type_id") if $logger;
+            $logger->debug("unknown consumable type $type_id: " .
+                (getCanonicalString($descriptions->{$consumable_id}) || "no description")
+            ) if $logger;
             next;
         }
 
         if ($type eq 'TONER' || $type eq 'DRUM' || $type eq 'CARTRIDGE' || $type eq 'DEVELOPER') {
             my $color;
-            if ($color_id) {
+            if ($colors && $color_id) {
                 $color = getCanonicalString($colors->{$color_id});
                 if (!$color) {
-                    $logger->debug("invalid color ID $color_id") if $logger;
+                    $logger->debug("invalid consumable color ID $color_id for : " .
+                        (getCanonicalString($descriptions->{$consumable_id}) || "no description")
+                    ) if $logger;
                     next;
                 }
+                # remove space and following char, XML tag does not accept space
+                $color =~ s/\s.*$//;
             } else {
                 # fallback on description
-                my $description = $descriptions->{$consumable_id};
+                my $description = getCanonicalString($descriptions->{$consumable_id});
                 $color =
                     $description =~ /cyan/i           ? 'cyan'    :
                     $description =~ /magenta/i        ? 'magenta' :
@@ -782,7 +704,7 @@ sub _setPrinterProperties {
         }
         next unless defined $value;
         if (!isInteger($value)) {
-            $logger->error("incorrect counter value $value, check $variable->{mapping} mapping") if $logger;
+            $logger->debug("incorrect counter value $value, check $variable->{mapping} mapping") if $logger;
             next;
         }
         $device->{PAGECOUNTERS}->{$key} = $value;
@@ -840,22 +762,6 @@ sub _getPercentValue {
     return int(
         ( 100 * $value2 ) / $value1
     );
-}
-
-sub _getCanonicalMemory {
-    my ($value) = @_;
-
-    if ($value =~ /^(\d+) KBytes$/) {
-        return int($1 / 1024);
-    } else {
-        return int($value / 1024 / 1024);
-    }
-}
-
-sub _getCanonicalCount {
-    my ($value) = @_;
-
-    return isInteger($value) ? $value  : undef;
 }
 
 sub _getElement {
@@ -972,7 +878,7 @@ sub _addKnownMacAddresses {
     foreach my $port_id (keys %$mac_addresses) {
         # safety check
         if (! exists $ports->{$port_id}) {
-            $logger->error(
+            $logger->debug(
                 "invalid interface ID $port_id while setting known mac " .
                 "addresses, aborting"
             ) if $logger;
@@ -1070,8 +976,8 @@ sub _setConnectedDevices {
         foreach my $interface_id (keys %$lldp_info) {
             # safety check
             if (! exists $ports->{$interface_id}) {
-                $logger->warning(
-                    "unknown interface $interface_id in LLDP info, ignoring"
+                $logger->debug(
+                    "LLDP support: unknown interface $interface_id in LLDP info, ignoring"
                 ) if $logger;
                 next;
             }
@@ -1091,8 +997,8 @@ sub _setConnectedDevices {
         foreach my $interface_id (keys %$cdp_info) {
             # safety check
             if (! exists $ports->{$interface_id}) {
-                $logger->warning(
-                    "unknown interface $interface_id in CDP info, ignoring"
+                $logger->debug(
+                    "CDP support: unknown interface $interface_id in CDP info, ignoring"
                 ) if $logger;
                 next;
             }
@@ -1109,8 +1015,8 @@ sub _setConnectedDevices {
                     }
                 } else {
                     # undecidable situation
-                    $logger->warning(
-                        "multiple neighbors found by LLDP and CDP for " .
+                    $logger->debug(
+                        "CDP support: multiple neighbors found by LLDP and CDP for " .
                         "interface $interface_id, ignoring"
                     );
                     delete $port->{CONNECTIONS};
@@ -1129,8 +1035,8 @@ sub _setConnectedDevices {
         foreach my $interface_id (keys %$edp_info) {
             # safety check
             if (! exists $ports->{$interface_id}) {
-                $logger->warning(
-                    "unknown interface $interface_id in EDP info, ignoring"
+                $logger->debug(
+                    "EDP support: unknown interface $interface_id in EDP info, ignoring"
                 ) if $logger;
                 next;
             }
@@ -1147,8 +1053,8 @@ sub _setConnectedDevices {
                     }
                 } else {
                     # undecidable situation
-                    $logger->warning(
-                        "multiple neighbors found by LLDP and EDP for " .
+                    $logger->debug(
+                        "EDP support: multiple neighbors found by LLDP and EDP for " .
                         "interface $interface_id, ignoring"
                     );
                     delete $port->{CONNECTIONS};
@@ -1186,18 +1092,42 @@ sub _getLLDPInfo {
     # $prefix.x.y.z = $value
     # whereas y is either a port or an interface id
 
+    # See LldpChassisIdSubtype textual convention in lldp.mib RFC
+    # We only report macAddress='4' at the moment
+    my %not_supported_subtype = (
+        '1' => "chassis component",
+        '2' => "interface alias",
+        '3' => "port component",
+        '5' => "network address",
+        '6' => "interface name",
+        '7' => "local"
+    );
+
     while (my ($suffix, $mac) = each %{$lldpRemChassisId}) {
         my $sysdescr = getCanonicalString($lldpRemSysDesc->{$suffix});
         my $sysname = getCanonicalString($lldpRemSysName->{$suffix});
         next unless ($sysdescr || $sysname);
 
-        # We only support macAddress as LldpChassisIdSubtype at the moment
+        # Skip unexpected suffix format (seen at least on mikrotik devices)
+        if ($suffix =~ /^\d+$/) {
+            $logger->debug2("LLDP support: skipping unsupported suffix interface $suffix")
+                if ($logger);
+            next;
+        }
+
+        # Skip unsupported LldpChassisIdSubtype
         my $subtype = $ChassisIdSubType->{$suffix} || "n/a";
         unless ($subtype eq '4') {
-            $logger->debug(
-                "ChassisId subtype $subtype not supported for <$sysdescr>, value was " .
-                ($mac||"n/a") . ", please report this issue"
-            ) if $logger;
+            if ($logger) {
+                my $info = ($sysname || "no name") . ", " .
+                    (getCanonicalString($mac) || "no chassis id") . ", " .
+                    ($sysdescr || "no description");
+                if ($not_supported_subtype{$subtype}) {
+                    $logger->debug("LLDP support: skipping $not_supported_subtype{$subtype}: $info");
+                } else {
+                    $logger->debug("LLDP support: ChassisId subtype $subtype not supported for <$info>, please report this issue");
+                }
+            }
             next;
         }
 
@@ -1211,7 +1141,7 @@ sub _getLLDPInfo {
         # duplicating chassiId
         my $portId = $lldpRemPortId->{$suffix};
         if ($portId !~ /^0x/ or length($portId) != 14) {
-            $connection->{IFNUMBER} = $portId;
+            $connection->{IFNUMBER} = getCanonicalString($portId);
         }
 
         my $ifdescr = getCanonicalString($lldpRemPortDesc->{$suffix});
@@ -1266,7 +1196,7 @@ sub _getCDPInfo {
         if ($devicePort =~ /^\d+$/) {
             $connection->{IFNUMBER} = $devicePort;
         } else {
-            $connection->{IFDESCR} = $devicePort;
+            $connection->{IFDESCR} = getCanonicalString($devicePort);
         }
 
         # cdpCacheDeviceId is either remote host name, either remote mac address
@@ -1285,14 +1215,14 @@ sub _getCDPInfo {
 
         if ($connection->{SYSNAME} &&
             $connection->{SYSNAME} =~ /^SIP([A-F0-9a-f]*)$/) {
-            $connection->{MAC} = lc(alt2canonical("0x".$1));
+            $connection->{SYSMAC} = lc(alt2canonical("0x".$1));
         }
 
         # warning: multiple neighbors announcement for the same interface
         # usually means a non-CDP aware intermediate equipement
         if ($results->{$interface_id}) {
-            $logger->warning(
-                "multiple neighbors found by CDP for interface $interface_id," .
+            $logger->debug(
+                "CDP support: multiple neighbors found by CDP for interface $interface_id," .
                 " ignoring"
             );
             $blacklist->{$interface_id} = 1;
@@ -1338,16 +1268,16 @@ sub _getEDPInfo {
 
         my $connection = {
             IP       => $ip,
-            IFDESCR  => $edpNeighborPort->{$short_suffix},
-            SYSNAME  => $edpNeighborName->{$short_suffix},
+            IFDESCR  => getCanonicalString($edpNeighborPort->{$short_suffix}),
+            SYSNAME  => getCanonicalString($edpNeighborName->{$short_suffix}),
             SYSMAC   => sprintf "%02x:%02x:%02x:%02x:%02x:%02x", @mac_elements
         };
 
         # warning: multiple neighbors announcement for the same interface
         # usually means a non-EDP aware intermediate equipement
         if ($results->{$interface_id}) {
-            $logger->warning(
-                "multiple neighbors found by EDP for interface $interface_id," .
+            $logger->debug(
+                "EDP support: multiple neighbors found by EDP for interface $interface_id," .
                 " ignoring"
             );
             $blacklist->{$interface_id} = 1;
@@ -1377,7 +1307,7 @@ sub _setVlans {
     foreach my $port_id (keys %$vlans) {
         # safety check
         if (! exists $ports->{$port_id}) {
-            $logger->error(
+            $logger->debug(
                 "invalid interface ID $port_id while setting vlans, aborting"
             ) if $logger;
             last;
@@ -1462,7 +1392,7 @@ sub _setTrunkPorts {
     foreach my $port_id (keys %$trunk_ports) {
         # safety check
         if (! exists $ports->{$port_id}) {
-            $logger->error(
+            $logger->debug(
                 "invalid interface ID $port_id while setting trunk flag, " .
                 "aborting"
             ) if $logger;
@@ -1540,7 +1470,7 @@ sub _setAggregatePorts {
         foreach my $interface_id (keys %$lacp_info) {
             # safety check
             if (!$ports->{$interface_id}) {
-                $logger->warning(
+                $logger->debug(
                     "unknown interface $interface_id in LACP info, ignoring"
                 ) if $logger;
                 next;
@@ -1554,7 +1484,7 @@ sub _setAggregatePorts {
         foreach my $interface_id (keys %$pagp_info) {
             # safety check
             if (!$ports->{$interface_id}) {
-                $logger->error(
+                $logger->debug(
                     "unknown interface $interface_id in PAGP info, ignoring"
                 ) if $logger;
                 next;

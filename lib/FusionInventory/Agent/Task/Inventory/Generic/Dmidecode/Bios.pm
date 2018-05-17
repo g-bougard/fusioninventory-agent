@@ -3,6 +3,8 @@ package FusionInventory::Agent::Task::Inventory::Generic::Dmidecode::Bios;
 use strict;
 use warnings;
 
+use parent 'FusionInventory::Agent::Task::Inventory::Module';
+
 use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Tools::Generic;
 
@@ -58,6 +60,7 @@ sub _getBiosHardware {
     $bios->{MMANUFACTURER} = $base_info->{'Manufacturer'};
 
     $bios->{SSN} = $system_info->{'Serial Number'};
+    $bios->{SSN} = $chassis_info->{'Serial Number'} if (!defined($bios->{SSN}));
     $bios->{MSN} = $base_info->{'Serial Number'};
 
     if ($bios->{MMODEL} && $bios->{MMODEL} eq "VirtualBox" &&

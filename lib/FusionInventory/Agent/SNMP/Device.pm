@@ -19,6 +19,48 @@ use constant inventory => [ qw(
         INFO PORTS MODEMS FIRMWARES SIMCARDS PAGECOUNTERS CARTRIDGES
     )];
 
+# common base variables
+my $base_variables = {
+    SNMPHOSTNAME => {
+        oid  => [
+            '.1.3.6.1.2.1.1.5.0',
+            '.1.3.6.1.4.1.2699.1.2.1.2.1.1.2.1', # PRINTER-PORT-MONITOR-MIB, ppmPrinterName
+        ],
+        type => 'string',
+    },
+    LOCATION     => {
+        oid  => '.1.3.6.1.2.1.1.6.0',
+        type => 'string',
+    },
+    CONTACT      => {
+        oid  => '.1.3.6.1.2.1.1.4.0',
+        type => 'string',
+    },
+    UPTIME       => {
+        oid  => '.1.3.6.1.2.1.1.3.0',
+        type => 'string',
+    },
+};
+
+# common base variables for inventory only
+my $inventory_only_base_variables = {
+    CPU          => {
+        oid  => '.1.3.6.1.4.1.9.9.109.1.1.1.1.3.1',
+        type => 'count',
+    },
+    MEMORY       => {
+        oid  => [
+            '.1.3.6.1.4.1.9.2.1.8.0',
+            '.1.3.6.1.2.1.25.2.3.1.5.1',
+        ],
+        type => 'memory',
+    },
+    RAM          => {
+        oid  => '.1.3.6.1.4.1.9.3.6.6.0',
+        type => 'memory',
+    },
+};
+
 sub new {
     my ($class, %params) = @_;
 
@@ -196,12 +238,12 @@ sub setSerial {
     my ($self) = @_;
 
     my $serial =
+        # First try MIB Support mechanism
+        $self->getSerialByMibSupport()                         ||
         # Entity-MIB::entPhysicalSerialNum
         $self->{snmp}->get_first('.1.3.6.1.2.1.47.1.1.1.1.11') ||
         # Printer-MIB::prtGeneralSerialNumber
-        $self->{snmp}->get_first('.1.3.6.1.2.1.43.5.1.1.17') ||
-        # Try MIB Support mechanism
-        $self->getSerialByMibSupport();
+        $self->{snmp}->get_first('.1.3.6.1.2.1.43.5.1.1.17');
 
     if ( not defined $serial ) {
         # vendor specific OIDs
@@ -223,21 +265,26 @@ sub setSerial {
         }
     }
 
+    $serial = getCanonicalSerialNumber($serial);
+
     return unless $serial;
 
-    $self->{SERIAL} = getCanonicalSerialNumber($serial);
+    # Skip well-known invalid serial number
+    return if $serial =~ /^X+$/;
+
+    $self->{SERIAL} = $serial;
 }
 
 sub setFirmware {
     my ($self) = @_;
 
     my $firmware =
+        # First try to get firmware from MIB Support mechanism
+        $self->getFirmwareByMibSupport()                       ||
         # entPhysicalSoftwareRev
         $self->{snmp}->get_first('.1.3.6.1.2.1.47.1.1.1.1.10') ||
         # entPhysicalFirmwareRev
-        $self->{snmp}->get_first('.1.3.6.1.2.1.47.1.1.1.1.9')  ||
-        # firmware from supported mib
-        $self->getFirmwareByMibSupport();
+        $self->{snmp}->get_first('.1.3.6.1.2.1.47.1.1.1.1.9');
 
     if ( not defined $firmware ) {
         # vendor specific OIDs
@@ -250,12 +297,15 @@ sub setFirmware {
             $firmware = $self->get($oid);
             last if defined $firmware;
         }
+        return unless defined $firmware;
     }
 
-    return unless defined $firmware;
+    $firmware = getCanonicalString($firmware);
+
+    return unless $firmware;
 
     # Set device firmware
-    $self->{FIRMWARE} = getCanonicalString($firmware);
+    $self->{FIRMWARE} = $firmware;
 
     # Also add firmware as device FIRMWARES
     $self->addFirmware({
@@ -288,6 +338,14 @@ sub setMacAddress {
 
     # interfaces list with defined ip to use as filter to select shorter mac address list
     my $ips = $self->walk('.1.3.6.1.2.1.4.20.1.2');
+
+    # If peer adress is known, get mac from it
+    my $peer = $self->{snmp}->peer_address();
+    if ($peer && $ips->{$peer} && $addresses->{$ips->{$peer}}) {
+        $address = getCanonicalMacAddress($addresses->{$ips->{$peer}});
+        return $self->{MAC} = $address
+            if $address && $address =~ /^$mac_address_pattern$/;
+    }
 
     my @all_mac_addresses = ();
 
@@ -322,6 +380,84 @@ sub setMacAddress {
             return $self->{MAC} = $currentMac
                 if ($macs{$currentMac} == $macs{$sortedMac[0]} - 1);
         }
+    }
+}
+
+# rules on model name to reset manufacturer to real vendor
+my %sysmodel_first_word = (
+    'dell'           => { manufacturer => 'Dell', },
+);
+
+sub setModel {
+    my ($self) = @_;
+
+    # fallback model identification attempt, using type-specific OID value
+    if (!exists $self->{MODEL}) {
+        my $model = exists $self->{TYPE} && $self->{TYPE} eq 'PRINTER' ?
+            $self->get('.1.3.6.1.2.1.25.3.2.1.3.1')    :
+            exists $self->{TYPE} && $self->{TYPE} eq 'POWER' ?
+            $self->get('.1.3.6.1.2.1.33.1.1.5.0')      : # UPS-MIB
+            $self->get('.1.3.6.1.2.1.47.1.1.1.1.13.1') ;
+        $self->{MODEL} = getCanonicalString($model) if $model;
+    }
+
+    # fallback manufacturer identification attempt, using type-agnostic OID
+    if (!exists $self->{MANUFACTURER}) {
+        my $manufacturer = $self->get('.1.3.6.1.2.1.43.8.2.1.14.1.1');
+        $self->{MANUFACTURER} = $manufacturer if $manufacturer;
+    }
+
+    # reset manufacturer by rule as real vendor based on first model word
+    if (exists $self->{MODEL}) {
+        my ($first_word) = $self->{MODEL} =~ /(\S+)/;
+        my $result = $sysmodel_first_word{lc($first_word)};
+        if ($result && $result->{manufacturer}) {
+            $self->{MANUFACTURER} = $result->{manufacturer};
+        }
+    }
+
+    # Permit mib support to reset model
+    if ($self->{MIBSUPPORT}) {
+        my $model = $self->{MIBSUPPORT}->getMethod('getModel');
+        $self->{MODEL} = getCanonicalString($model) if $model;
+    }
+}
+
+sub setBaseInfos {
+    my ($self) = @_;
+    $self->_set_from_oid_list($base_variables, $self);
+}
+
+sub setInventoryBaseInfos {
+    my ($self) = @_;
+    $self->_set_from_oid_list($inventory_only_base_variables, $self->{INFO});
+}
+
+sub _set_from_oid_list {
+    my ($self, $list, $where) = @_;
+
+    foreach my $key (keys %{$list}) {
+        my $variable = $list->{$key};
+
+        my $raw_value;
+        if (ref $variable->{oid} eq 'ARRAY') {
+            foreach my $oid (@{$variable->{oid}}) {
+                $raw_value = $self->get($oid);
+                last if defined $raw_value;
+            }
+        } else {
+            $raw_value = $self->get($variable->{oid});
+        }
+        next unless defined $raw_value;
+
+        my $type = $variable->{type};
+        my $value =
+            $type eq 'memory' ? getCanonicalMemory($raw_value) :
+            $type eq 'string' ? getCanonicalString($raw_value) :
+            $type eq 'count'  ? getCanonicalCount($raw_value)  :
+                                $raw_value;
+
+        $where->{$key} = $value if defined $value;
     }
 }
 

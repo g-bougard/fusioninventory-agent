@@ -1,20 +1,57 @@
 Revision history for FusionInventory agent
 
-2.4 not released yet
+2.4.1 not released yet
+
+core:
+* Normalized Target class APIs
+* Register planned tasks at target level so target class can filter out
+  unsupported tasks
+
+inventory:
+* Fix BSD Storages support
+
+netdiscovery/netinventory:
+* Bump NetDiscovery task version to 2.6
+* Bump NetInventory task version to 3.0
+* Fix RAM & CPU are missing from net inventory
+* Added support for HP Net Peripheral, involving better HP printers inventory
+ * Get Serial number & firmware version
+ * Fix total printed pages counter in many case
+ * Added total color pages counter support
+* Don't assume colors table was read: fixes black toner detection on many HP printers
+* Added Microtik devices support
+* Enhanced Epson printers support, including model name, serial number and firmwares
+* Updated LLDP support
+* NetInventory task protocol upgrade to fix multithreading scheduling according to
+  upgrades done server-side.
+* Fix discovery of devices with only ping responding and without found hostname. In
+  that case, we default the DNSHOSTNAME to the scanned ip.
+* Update nmap options to also send a ICMP echo request, so devices not supporting
+  ICMP timestamp requests can also be discovered
+
+2.4 Fri, 29 Dec 2017
 core:
 * Cleanup confdir use in task so using deprecated etc/softwares folder is no more
   logged in journal
 * Get rid of confdir setup in setup.pm
+* Added "include" directive support while reading configuration file to make
+  configuration maintenance easy
 * Update syslog name to fullname agent
-* Get rid of List::Util module dependency
+* Get rid of List::Util & Proc::PID::File module dependencies
 * Try to load more recent IDS database files if found in well-known places
-* Fixed daemon pid filename
+* Fixed default daemon pid filename
+* When --pidfile is used, don't permit to manually start daemon even in foreground
+  unless --pidfile parameter is different
+* Makes --pidfile filename optional to compute a default one
+* Check if we need to include libdir while daemonize
 * Class refactoring: Get rid of discouraged 'use base' syntax in favor of lighter
   'use parent' and as fields pragma is not used (see 'base' man)
 * Logger refactoring: no more an Exporter based class to simplify its usage and
   as Logger object should be commonly shared everywhere it is used.
 * Fix command run to also time out while an alarm has been set
+* Fix WMI calls to also time out under win32
 * Few code refactoring
+* remove devtom30 from maintainers
 
 inventory:
 * Bump Inventory task version to 1.4
@@ -24,20 +61,43 @@ inventory:
 * Linux distro: Add support for reading os-release file and removing LSB support
 * Fix Solaris drives df output parsing adding better zfs handling
 * Make backend-collect-timeout working even while waiting on command output
+* Support ASM filesystems on Oracle Grid
+* Introduce getDeviceId() API on Inventory class so it returns task deviceid if set
+  or set a new deviceid (aka agentid or machineid) in case of remote inventory
+* Fix #161: Support retrieving License software via WMI, including Office 2016
+* Fix #364: [win32] Get antivirus version from software installation and get
+  Windows Defender version via WMI
+* Added Windows 10 version support
+* Updated pci.ids to 2017.12.20 version
+* Updated usb.ids to 2017.12.28 version
 
 netdiscovery/netinventory:
-* Bump NetDiscovery & NetInventory task version to 2.4
+* Bump NetDiscovery & NetInventory task version to 2.5
 * Added section support for MODEMS, SIMCARDS & FIRMWARES
 * Added new detection algorithm based on exposed device supported MIB (sysORID list)
   and/or sysObjectID
 * Added support for HP iLO cards
 * Added support for Digi devices with enhanced MODEMS, SIMCARDS & FIRMWARES support
 * Updated sysobject.ids with a lot of new devices support
+* Keep first MAC address found while discovering
+* Try first to select MAC address from SNMP session during SNMP device scan
+* Updated sysobject.ids (tagged fia-2.4 tag on github repository)
 
 deploy:
 * Bump Deploy task version to 2.5
 * ddurieux fixed a regression introduced in 2.3.18 preventing to re-use known
   good peer to download file parts.
+
+esx:
+* Bump ESX task version to 2.3
+* Removed no more needed createFakeDeviceid() API
+
+injector:
+* Support --no-ssl-check option to avoid checking server SSL certificate
+
+wmi-inventory:
+* Added new task and script to permit agent-less inventory on win32 platform based
+  on remote WMI support.
 
 2.3.21 Mon, 31 Jul 2017
 core:

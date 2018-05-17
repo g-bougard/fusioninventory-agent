@@ -3,20 +3,20 @@ package FusionInventory::Agent::Task::Inventory::Win32::Users;
 use strict;
 use warnings;
 
-use constant wbemFlagReturnImmediately => 0x10;
-use constant wbemFlagForwardOnly => 0x20;
+use parent 'FusionInventory::Agent::Task::Inventory::Module';
 
 use English qw(-no_match_vars);
-use Win32::TieRegistry (
-    Delimiter   => '/',
-    ArrayValues => 0,
-    qw/KEY_READ/
-);
 
 use FusionInventory::Agent::Tools;
 use FusionInventory::Agent::Tools::Win32;
 
 sub isEnabled {
+    my (%params) = @_;
+    return 0 if $params{no_category}->{user};
+    return 1;
+}
+
+sub isEnabledForRemote {
     my (%params) = @_;
     return 0 if $params{no_category}->{user};
     return 1;
@@ -87,7 +87,7 @@ sub _getLocalUsers {
 
     foreach my $object (getWMIObjects(
         moniker    => 'winmgmts:\\\\.\\root\\CIMV2',
-        query      => [ $query ],
+        query      => $query,
         properties => [ qw/Name SID/ ])
     ) {
         my $user = {
@@ -110,7 +110,7 @@ sub _getLocalGroups {
 
     foreach my $object (getWMIObjects(
         moniker    => 'winmgmts:\\\\.\\root\\CIMV2',
-        query      => [ $query ],
+        query      => $query,
         properties => [ qw/Name SID/ ])
     ) {
         my $group = {
@@ -125,19 +125,17 @@ sub _getLocalGroups {
 
 sub _getLoggedUsers {
 
-    my @query = (
+    my $query =
         "SELECT * FROM Win32_Process".
         " WHERE ExecutablePath IS NOT NULL" .
-        " AND ExecutablePath LIKE '%\\\\Explorer\.exe'", "WQL",
-        wbemFlagReturnImmediately | wbemFlagForwardOnly ## no critic (ProhibitBitwise)
-    );
+        " AND ExecutablePath LIKE '%\\\\Explorer\.exe'";
 
     my @users;
     my $seen;
 
     foreach my $user (getWMIObjects(
         moniker    => 'winmgmts:\\\\.\\root\\CIMV2',
-        query      => \@query,
+        query      => $query,
         method     => 'GetOwner',
         params     => [ 'name', 'domain' ],
         name       => [ 'string', '' ],
@@ -190,7 +188,7 @@ sub _getLocalUser {
 
     my @local_users = getWMIObjects(
         moniker    => 'winmgmts:\\\\.\\root\\CIMV2',
-        query      => [ $query ],
+        query      => $query,
         properties => [ qw/Name Domain/ ]
     );
 

@@ -29,7 +29,7 @@ sub _versionString {
     my ($VERSION) = @_;
 
     my $string = "$PROVIDER Agent ($VERSION)";
-    if ($VERSION =~ /^\d+\.\d+\.(99\d\d|\d+-dev)$/) {
+    if ($VERSION =~ /^\d+\.\d+\.(99\d\d|\d+-dev|.*-build-?\d+)$/) {
         unshift @{$COMMENTS}, "** THIS IS A DEVELOPMENT RELEASE **";
     }
 
@@ -45,7 +45,6 @@ sub new {
         libdir  => $params{libdir},
         vardir  => $params{vardir},
         targets => [],
-        tasks   => []
     };
     bless $self, $class;
 
@@ -71,7 +70,12 @@ sub init {
 
     $self->_handlePersistentState();
 
-    $self->_createTargets();
+    # Always reset targets to handle re-init case
+    $self->{targets} = $config->getTargets(
+        logger      => $self->{logger},
+        deviceid    => $self->{deviceid},
+        vardir      => $self->{vardir}
+    );
 
     if (!$self->getTargets()) {
         $logger->error("No target defined, aborting");
@@ -86,7 +90,6 @@ sub init {
     my %available = $self->getAvailableTasks(disabledTasks => $config->{'no-task'});
     my @tasks = keys %available;
     my @plannedTasks = $self->computeTaskExecutionPlan(\@tasks);
-    $self->{tasksExecutionPlan} = \@plannedTasks;
 
     my %available_lc = map { (lc $_) => $_ } keys %available;
     if (!@tasks) {
@@ -98,13 +101,24 @@ sub init {
     foreach my $task (keys %available) {
         $logger->debug("- $task: $available{$task}");
     }
-    $logger->debug("Planned tasks:");
-    foreach my $task (@{$self->{tasksExecutionPlan}}) {
-        my $task_lc = lc $task;
-        $logger->debug("- $task: " . $available{$available_lc{$task_lc}});
-    }
 
-    $self->{tasks} = \@tasks;
+    my %planned = ();
+    foreach my $target ($self->getTargets()) {
+        $logger->debug($target->getType() . " target: " . $target->getName());
+
+        # Register planned tasks by target
+        my @planned = $target->plannedTasks(@plannedTasks);
+
+        if (@planned) {
+            $logger->debug("Planned tasks:");
+            foreach my $task (@planned) {
+                my $task_lc = lc $task;
+                $logger->debug("- $task: " . $available{$available_lc{$task_lc}});
+            }
+        } else {
+            $logger->debug("No planned task");
+        }
+    }
 
     $logger->info("Options 'no-task' and 'tasks' are both used. Be careful that 'no-task' always excludes tasks.")
         if ($self->{config}->isParamArrayAndFilled('no-task') && $self->{config}->isParamArrayAndFilled('tasks'));
@@ -170,7 +184,7 @@ sub runTarget {
     # the prolog dialog must be done once for all tasks,
     # but only for server targets
     my $response;
-    if ($target->isa('FusionInventory::Agent::Target::Server')) {
+    if ($target->isType('server')) {
 
         return unless FusionInventory::Agent::HTTP::Client::OCS->require();
 
@@ -210,7 +224,7 @@ sub runTarget {
         }
     }
 
-    foreach my $name (@{$self->{tasksExecutionPlan}}) {
+    foreach my $name ($target->plannedTasks()) {
         eval {
             $self->runTask($target, $name, $response);
         };
@@ -241,7 +255,11 @@ sub runTaskReal {
 
     my $class = "FusionInventory::Agent::Task::$name";
 
-    $class->require();
+    if (!$class->require()) {
+        $self->{logger}->debug2("$name task module does not compile: $@")
+            if $self->{logger};
+        return;
+    }
 
     my $task = $class->new(
         config       => $self->{config},
@@ -340,29 +358,6 @@ sub getAvailableTasks {
     }
 
     return %tasks;
-}
-
-sub _getTaskVersion {
-    my ($self, $module) = @_;
-
-    my $logger = $self->{logger};
-
-    if (!$module->require()) {
-        $logger->debug2("module $module does not compile: $@") if $logger;
-
-        # Don't keep trace of module, only really needed to fix perl 5.8 issue
-        delete $INC{module2file($module)};
-
-        return;
-    }
-
-    my $version;
-    {
-        no strict 'refs';  ## no critic
-        $version = &{$module . '::VERSION'};
-    }
-
-    return $version;
 }
 
 sub _handlePersistentState {
@@ -470,50 +465,6 @@ sub _makeExecutionPlan {
     }
 
     return @executionPlan;
-}
-
-sub getTasksExecutionPlan {
-    my ($self) = @_;
-
-    return $self->{tasksExecutionPlan};
-}
-
-sub _createTargets {
-    my ($self) = @_;
-
-    my $config = $self->{config};
-
-    # Always reset targets to handle re-init case
-    $self->{targets} = [];
-
-    # create target list
-    if ($config->{local}) {
-        foreach my $path (@{$config->{local}}) {
-            push @{$self->{targets}},
-                FusionInventory::Agent::Target::Local->new(
-                    logger     => $self->{logger},
-                    deviceid   => $self->{deviceid},
-                    delaytime  => $config->{delaytime},
-                    basevardir => $self->{vardir},
-                    path       => $path,
-                    html       => $config->{html},
-                );
-        }
-    }
-
-    if ($config->{server}) {
-        foreach my $url (@{$config->{server}}) {
-            push @{$self->{targets}},
-                FusionInventory::Agent::Target::Server->new(
-                    logger     => $self->{logger},
-                    deviceid   => $self->{deviceid},
-                    delaytime  => $config->{delaytime},
-                    basevardir => $self->{vardir},
-                    url        => $url,
-                    tag        => $config->{tag},
-                );
-        }
-    }
 }
 
 1;
