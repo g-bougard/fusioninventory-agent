@@ -5,8 +5,8 @@ before_install:
   - perlbrew list
   - perl -V
 perl:
-  - "5.28"
-  - "5.28-shrplib"
+#  - "5.28"                 # still not available version
+#  - "5.28-shrplib"         # still not available version
   - "5.26"
   - "5.26-shrplib"
   - "5.24"
@@ -14,11 +14,11 @@ perl:
   - "5.22"
   - "5.22-shrplib"
   - "5.20"
-  - "5.20-shrplib"
+#  - "5.20-shrplib"         # cpanm failure
   - "5.18"
-  - "5.18-shrplib"
+#  - "5.18-shrplib"         # cpanm failure
   - "5.16"
-  - "5.16-shrplib"
+#  - "5.16-shrplib"         # cpanm failure
   - "5.14"
   - "5.12"
   - "5.10"
