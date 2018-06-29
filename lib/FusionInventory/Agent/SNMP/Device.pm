@@ -45,18 +45,22 @@ my $base_variables = {
 # common base variables for inventory only
 my $inventory_only_base_variables = {
     CPU          => {
-        oid  => '.1.3.6.1.4.1.9.9.109.1.1.1.1.3.1',
+        oid  => [
+            '.1.3.6.1.4.1.9.9.109.1.1.1.1.6.1',
+            '.1.3.6.1.4.1.9.9.109.1.1.1.1.3.1',
+        ],
         type => 'count',
     },
     MEMORY       => {
-        oid  => [
-            '.1.3.6.1.4.1.9.2.1.8.0',
-            '.1.3.6.1.2.1.25.2.3.1.5.1',
-        ],
+        oid  => '.1.3.6.1.2.1.25.2.3.1.5.1',
         type => 'memory',
     },
     RAM          => {
-        oid  => '.1.3.6.1.4.1.9.3.6.6.0',
+        oid  => [
+            '.1.3.6.1.4.1.2021.4.5',
+            '.1.3.6.1.4.1.9.3.6.6.0',
+            '.1.3.6.1.2.1.25.2.2.0',
+        ],
         type => 'memory',
     },
 };
@@ -423,9 +427,37 @@ sub setModel {
     }
 }
 
+sub setType {
+    my ($self) = @_;
+
+    # Permit mib support to reset type
+    if ($self->{MIBSUPPORT}) {
+        my $type = $self->{MIBSUPPORT}->getMethod('getType');
+        $self->{TYPE} = $type if $type;
+    }
+}
+
+sub setManufacturer {
+    my ($self) = @_;
+
+    # Permit mib support to reset type
+    if ($self->{MIBSUPPORT}) {
+        my $manufacturer = $self->{MIBSUPPORT}->getMethod('getManufacturer');
+        $self->{MANUFACTURER} = $manufacturer if $manufacturer;
+    }
+}
+
 sub setBaseInfos {
     my ($self) = @_;
     $self->_set_from_oid_list($base_variables, $self);
+
+    # Filter out LOCATION & CONTACT from unwanted values
+    if ($self->{LOCATION} && $self->{LOCATION} =~ /edit \/etc.*snmp.*\.conf/) {
+        delete $self->{LOCATION};
+    }
+    if ($self->{CONTACT} && $self->{CONTACT} =~ /configure \/etc.*snmp.*\.conf/) {
+        delete $self->{CONTACT};
+    }
 }
 
 sub setInventoryBaseInfos {

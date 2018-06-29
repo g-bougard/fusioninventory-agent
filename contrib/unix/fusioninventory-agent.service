@@ -11,7 +11,8 @@
 
 [Unit]
 Description=FusionInventory agent
-After=syslog.target network.target
+Documentation=man:fusioninventory-agent
+After=network.target
 
 [Service]
 ExecStart=/usr/bin/fusioninventory-agent --daemon --no-fork $OPTIONS
