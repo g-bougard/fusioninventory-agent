@@ -1,9 +1,5 @@
 sudo: false
 language: perl
-# list available perl version
-before_install:
-  - perlbrew list
-  - perl -V
 perl:
   - "5.32"
   - "5.32-shrplib"
