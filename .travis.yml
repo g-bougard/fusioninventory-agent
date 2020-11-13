@@ -5,6 +5,8 @@ before_install:
   - perlbrew list
   - perl -V
 perl:
+  - "5.32"
+  - "5.32-shrplib"
   - "5.30"
   - "5.30-shrplib"
   - "5.28"
