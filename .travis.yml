@@ -23,6 +23,13 @@ perl:
   - "5.12"
   - "5.10"
   - "5.8"
+before_install:
+  - git clone git://github.com/travis-perl/helpers ~/travis-perl-helpers
+  - source ~/travis-perl-helpers/init
+  - build-perl
+  - perl -V
+  - build-dist
+  - cd $BUILD_DIR             # $BUILD_DIR is set by the build-dist command
 notifications:
   email: false
   webhooks: https://fathomless-fjord-24024.herokuapp.com/notify
